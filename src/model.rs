@@ -125,6 +125,8 @@ pub enum Category {
     Topology,
     Perf,
     Rdt,
+    Accelerators,
+    Platform,
     Firmware,
 }
 
@@ -140,6 +142,8 @@ impl Category {
         Category::Topology,
         Category::Perf,
         Category::Rdt,
+        Category::Accelerators,
+        Category::Platform,
         Category::Firmware,
     ];
 
@@ -154,6 +158,8 @@ impl Category {
             Category::Topology => "Topology",
             Category::Perf => "Performance Monitoring & Trace",
             Category::Rdt => "Resource Director Technology (RDT)",
+            Category::Accelerators => "On-SoC Accelerators & Engines",
+            Category::Platform => "Chipset & Platform Devices",
             Category::Firmware => "Platform & Firmware",
         }
     }

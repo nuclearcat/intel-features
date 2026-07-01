@@ -8,6 +8,7 @@
 
 pub mod cpuid;
 pub mod msr;
+pub mod pci;
 pub mod procfs;
 pub mod sysfs;
 pub mod vulns;
@@ -55,6 +56,7 @@ pub fn all() -> Vec<Box<dyn Probe>> {
         Box::new(sysfs::SysfsProbe),
         Box::new(vulns::VulnProbe),
         Box::new(msr::MsrProbe),
+        Box::new(pci::PciProbe),
     ]
 }
 

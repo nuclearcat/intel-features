@@ -27,7 +27,42 @@ impl Probe for SysfsProbe {
         detect_idle(&mut out);
         detect_rapl(&mut out);
         detect_resctrl(&mut out);
+        detect_nodes(&mut out);
         out
+    }
+}
+
+/// Device-node / class corroboration not tied to a specific PCI device: IPMI, Bluetooth,
+/// and the SGX enclave node (which enriches the cpuid `sgx` capability with usability).
+fn detect_nodes(out: &mut Vec<(&'static str, Detection)>) {
+    let ipmi = Path::new("/dev/ipmi0").exists() || Path::new("/dev/ipmi/0").exists();
+    out.push((
+        "ipmi",
+        if ipmi {
+            Detection::with_detail(Status::Enabled, "linux-sysfs", "/dev/ipmi0 present")
+        } else {
+            Detection::with_detail(Status::Absent, "linux-sysfs", "no /dev/ipmi0")
+        },
+    ));
+
+    let bt = std::fs::read_dir("/sys/class/bluetooth")
+        .map(|mut d| d.any(|e| e.is_ok()))
+        .unwrap_or(false);
+    out.push((
+        "bluetooth",
+        if bt {
+            Detection::with_detail(Status::Enabled, "linux-sysfs", "hci device present")
+        } else {
+            Detection::with_detail(Status::Absent, "linux-sysfs", "no bluetooth hci")
+        },
+    ));
+
+    // SGX usability: only assert when the enclave node exists (don't contradict cpuid).
+    if Path::new("/dev/sgx_enclave").exists() {
+        out.push((
+            "sgx",
+            Detection::with_detail(Status::Enabled, "linux-sysfs", "/dev/sgx_enclave present"),
+        ));
     }
 }
 

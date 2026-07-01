@@ -8,9 +8,10 @@ See [`PLAN.md`](PLAN.md) for the full feature catalog and roadmap.
 
 ## Status
 
-Milestones **M0**–**M3** are complete. The catalog covers ~175 features across ISA,
+Milestones **M0**–**M4** are complete. The catalog covers ~195 features across ISA,
 security, CPU vulnerabilities, architectural capabilities, virtualization, power,
-topology, performance-monitoring, RDT and firmware. Five probes run today:
+topology, performance-monitoring, RDT, on-SoC accelerators, chipset/platform devices and
+firmware. Six probes run today:
 
 * **cpuid** — `raw-cpuid` plus direct leaf reads for bits it doesn't expose, executed
   **per logical core** (pinned via `sched_setaffinity`) so hybrid P/E asymmetries are
@@ -25,8 +26,11 @@ topology, performance-monitoring, RDT and firmware. Five probes run today:
   FEATURE_CONTROL (VMX enable/lock), VMX capability MSRs (EPT/VPID/APICv/…),
   TjMax/TDP/power limits, SMI count, Boot Guard. Degrades to one status line without
   root; run with `sudo` for the full picture.
+* **pci** — scans `/sys/bus/pci/devices` for Intel devices: chipset (PCH), iGPU, NPU,
+  accelerators (DSA/IAA/QAT/DLB/GNA), CSME, NIC, Wi-Fi, audio, SMBus, SPI flash,
+  Thunderbolt, VMD — matched by class / device-id / driver, enabled when a driver is bound.
 
-Later milestones: M4 = PCI/device probes, M5 = firmware tables (ACPI/SMBIOS/EFI).
+Later milestones: M5 = firmware tables (ACPI/SMBIOS/EFI), M6 = MEI/TXT/server extras.
 Target platform is Linux/x86-64.
 
 ## Build & run
@@ -57,6 +61,7 @@ probes/    — one module per mechanism, each emitting (feature_id, Detection) p
   sysfs    — /sys, /dev runtime state (SMT, /dev/kvm, TPM, pstate, RAPL, …)
   vulns    — /sys/.../vulnerabilities/* mitigation status
   msr      — /dev/cpu/0/msr, read-only (root); degrades gracefully otherwise
+  pci      — /sys/bus/pci Intel devices (chipset, accelerators, NIC, iGPU, …)
 report     — folds all detections against the catalog; renders text or JSON
 ```
 

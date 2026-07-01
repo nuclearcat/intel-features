@@ -313,10 +313,20 @@ features need root/msr.
 - Verified as root on 275HX: 176 features, 5 probes, 11 arch-cap immunities present,
       TjMax 105°C, TDP 55W, PL1 165W/PL2 210W, VMX enabled, 0 disparities. 17 tests.
 
-### M4 — PCI + device probes
-- [ ] PCI scan via sysfs; device-ID tables for PCH, MEI, QAT/DSA/IAA/DLB, VMD,
-      Thunderbolt, NICs, iGPU
-- [ ] devnode + kmod corroboration (tpm0, mei0, sgx, kvm, ipmi0)
+### M4 — PCI + device probes  ✅ DONE
+- [x] New `pci` probe scans `/sys/bus/pci/devices/*` for Intel (0x8086) devices and
+      matches a rule table by PCI class / device-id set / bound-driver name. Enabled =
+      driver bound, Present = unclaimed silicon, Absent = no match. Two new categories:
+      "On-SoC Accelerators & Engines" (igpu, npu, gna, dsa, iaa, qat, dlb) and
+      "Chipset & Platform Devices" (pch, csme, ethernet, wifi, bluetooth, audio, smbus,
+      spi_flash, thunderbolt, vmd, ipmi). Detail shows device id + driver inline.
+- [x] devnode / sysfs corroboration: csme→/dev/mei0, npu→/dev/accel/accel0,
+      thunderbolt→/sys/bus/thunderbolt, ipmi→/dev/ipmi0, bluetooth→/sys/class/bluetooth,
+      sgx→/dev/sgx_enclave (enriches the cpuid sgx capability). (kvm/tpm already covered.)
+- Verified on 275HX: iGPU (i915), NPU (intel_vpu), CSME, Ethernet (igc/I226), Wi-Fi
+      (iwlwifi), Bluetooth, SOF audio, SMBus, SPI flash, Thunderbolt all enabled; PCH LPC
+      0xae10 present; DSA/IAA/QAT/DLB/GNA/VMD/IPMI correctly absent. 194 features, 6
+      probes, 23 tests (6 new PCI matcher unit tests), fmt+clippy clean.
 
 ### M5 — Firmware tables
 - [ ] ACPI: DMAR, TPM2, NFIT, CEDT, HMAT, FADT flags (S0ix)
