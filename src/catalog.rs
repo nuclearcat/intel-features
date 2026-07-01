@@ -113,31 +113,57 @@ pub const FEATURES: &[FeatureDef] = &[
     // ids are the kernel filenames under /sys/devices/system/cpu/vulnerabilities/.
     // The vulns probe enumerates that directory; any file with no entry here is
     // collected under `vuln_other` rather than silently dropped.
-    def("meltdown", "Meltdown", Vulnerabilities, "Rogue data cache load (CVE-2017-5754)"),
-    def("spectre_v1", "Spectre v1", Vulnerabilities, "Bounds-check bypass"),
-    def("spectre_v2", "Spectre v2", Vulnerabilities, "Branch-target injection"),
-    def("spec_store_bypass", "Spectre v4 (SSB)", Vulnerabilities, "Speculative store bypass"),
-    def("l1tf", "L1TF", Vulnerabilities, "L1 Terminal Fault / Foreshadow"),
-    def("mds", "MDS", Vulnerabilities, "Microarchitectural Data Sampling"),
-    def("tsx_async_abort", "TAA", Vulnerabilities, "TSX Asynchronous Abort"),
-    def("itlb_multihit", "iTLB Multihit", Vulnerabilities, "Instruction-TLB multihit"),
-    def("srbds", "SRBDS", Vulnerabilities, "Special Register Buffer Data Sampling"),
-    def("mmio_stale_data", "MMIO Stale Data", Vulnerabilities, "Processor MMIO stale data"),
-    def("retbleed", "Retbleed", Vulnerabilities, "Return-stack-buffer underflow"),
-    def("gather_data_sampling", "GDS (Downfall)", Vulnerabilities, "Gather Data Sampling"),
-    def("reg_file_data_sampling", "RFDS", Vulnerabilities, "Register File Data Sampling"),
-    def("spec_rstack_overflow", "SRSO", Vulnerabilities, "Speculative return-stack overflow"),
-    def("indirect_target_selection", "ITS", Vulnerabilities, "Indirect Target Selection"),
-    def("ghostwrite", "GhostWrite", Vulnerabilities, "Architectural write vulnerability"),
-    def("old_microcode", "Old Microcode", Vulnerabilities, "Running outdated microcode"),
-    def("tsa", "TSA", Vulnerabilities, "Transient Scheduler Attack"),
-    def("vmscape", "VMScape", Vulnerabilities, "Guest→host branch-predictor leak"),
-    def("vuln_other", "Other (uncatalogued)", Vulnerabilities, "Kernel-listed vulns not yet in catalog"),
+    defv("meltdown", "Meltdown", Vulnerabilities, "Rogue data cache load (CVE-2017-5754)"),
+    defv("spectre_v1", "Spectre v1", Vulnerabilities, "Bounds-check bypass"),
+    defv("spectre_v2", "Spectre v2", Vulnerabilities, "Branch-target injection"),
+    defv("spec_store_bypass", "Spectre v4 (SSB)", Vulnerabilities, "Speculative store bypass"),
+    defv("l1tf", "L1TF", Vulnerabilities, "L1 Terminal Fault / Foreshadow"),
+    defv("mds", "MDS", Vulnerabilities, "Microarchitectural Data Sampling"),
+    defv("tsx_async_abort", "TAA", Vulnerabilities, "TSX Asynchronous Abort"),
+    defv("itlb_multihit", "iTLB Multihit", Vulnerabilities, "Instruction-TLB multihit"),
+    defv("srbds", "SRBDS", Vulnerabilities, "Special Register Buffer Data Sampling"),
+    defv("mmio_stale_data", "MMIO Stale Data", Vulnerabilities, "Processor MMIO stale data"),
+    defv("retbleed", "Retbleed", Vulnerabilities, "Return-stack-buffer underflow"),
+    defv("gather_data_sampling", "GDS (Downfall)", Vulnerabilities, "Gather Data Sampling"),
+    defv("reg_file_data_sampling", "RFDS", Vulnerabilities, "Register File Data Sampling"),
+    defv("spec_rstack_overflow", "SRSO", Vulnerabilities, "Speculative return-stack overflow"),
+    defv("indirect_target_selection", "ITS", Vulnerabilities, "Indirect Target Selection"),
+    defv("ghostwrite", "GhostWrite", Vulnerabilities, "Architectural write vulnerability"),
+    defv("old_microcode", "Old Microcode", Vulnerabilities, "Running outdated microcode"),
+    defv("tsa", "TSA", Vulnerabilities, "Transient Scheduler Attack"),
+    defv("vmscape", "VMScape", Vulnerabilities, "Guest→host branch-predictor leak"),
+    defv("vuln_other", "Other (uncatalogued)", Vulnerabilities, "Kernel-listed vulns not yet in catalog"),
+    // ============ Architectural Capabilities (IA32_ARCH_CAPABILITIES, MSR 0x10A) =====
+    // Present = the CPU declares this bit. Most *_NO bits mean "immune to X".
+    def("rdcl_no", "RDCL_NO", ArchCaps, "Immune to Meltdown (rogue data cache load)"),
+    def("eibrs", "IBRS_ALL / eIBRS", ArchCaps, "Enhanced IBRS (always-on branch restriction)"),
+    def("rsba", "RSBA", ArchCaps, "Retpoline-susceptible RSB behaviour"),
+    def("ssb_no", "SSB_NO", ArchCaps, "Immune to Spectre-v4 (speculative store bypass)"),
+    def("mds_no", "MDS_NO", ArchCaps, "Immune to MDS"),
+    def("if_pschange_no", "IF_PSCHANGE_MC_NO", ArchCaps, "No MCE on page-size change"),
+    def("tsx_ctrl", "TSX_CTRL", ArchCaps, "TSX control MSR (0x122) available"),
+    def("taa_no", "TAA_NO", ArchCaps, "Immune to TSX Async Abort"),
+    def("misc_package_ctls", "MISC_PACKAGE_CTLS", ArchCaps, "MSR 0x1AA available"),
+    def("fb_clear", "FB_CLEAR", ArchCaps, "Fill-buffer clear (VERW) supported"),
+    def("rrsba", "RRSBA", ArchCaps, "Restricted RSB alternate behaviour"),
+    def("bhi_no", "BHI_NO", ArchCaps, "Immune to Branch History Injection"),
+    def("pbrsb_no", "PBRSB_NO", ArchCaps, "Immune to Post-barrier RSB predictions"),
+    def("gds_no", "GDS_NO", ArchCaps, "Immune to Gather Data Sampling (Downfall)"),
+    def("rfds_no", "RFDS_NO", ArchCaps, "Immune to Register File Data Sampling"),
     // ================= Virtualization ================================================
     defk("vmx", "VT-x (VMX)", Virtualization, "Hardware virtualization", "vmx"),
     defk("smx", "SMX (TXT)", Virtualization, "Safer Mode Extensions", "smx"),
     defk("hypervisor", "Running under hypervisor", Virtualization, "Guest/VM detection", "hypervisor"),
     def("kvm", "KVM usable", Virtualization, "/dev/kvm present and openable"),
+    // VMX capability MSRs (0x481/0x48B/0x48C) — some also named by the kernel.
+    defk("ept", "EPT", Virtualization, "Extended Page Tables (2nd-level address translation)", "ept"),
+    defk("vpid", "VPID", Virtualization, "Virtual-processor IDs (tagged TLB)", "vpid"),
+    defk("ept_ad", "EPT A/D", Virtualization, "EPT accessed/dirty bits", "ept_ad"),
+    def("ept_1gb", "EPT 1GB pages", Virtualization, "1 GiB EPT mappings"),
+    def("unrestricted_guest", "Unrestricted Guest", Virtualization, "Real-mode/unpaged guest execution"),
+    def("apicv", "APICv", Virtualization, "Virtual-interrupt delivery"),
+    def("posted_intr", "Posted Interrupts", Virtualization, "Direct interrupt posting to guest"),
+    def("vmcs_shadow", "VMCS Shadowing", Virtualization, "Nested-VMX VMREAD/VMWRITE without exit"),
     // ================= Power & Thermal ===============================================
     defk("eist", "Enhanced SpeedStep", Power, "Software P-state control", "est"),
     defk("hwp", "HWP / Speed Shift", Power, "Hardware-managed P-states", "hwp"),
@@ -158,6 +184,11 @@ pub const FEATURES: &[FeatureDef] = &[
     def("intel_pstate", "intel_pstate driver", Power, "P-state governor driver active"),
     def("intel_idle", "intel_idle driver", Power, "C-state idle driver active"),
     def("rapl", "RAPL powercap", Power, "Running Average Power Limit domains exposed"),
+    // MSR-derived values (root)
+    defv("tjmax", "TjMax", Power, "Thermal throttle temperature (MSR 0x1A2)"),
+    defv("pkg_tdp", "Package TDP", Power, "Thermal design power (MSR 0x614)"),
+    defv("pkg_power_limit", "Package Power Limit", Power, "RAPL PL1/PL2 (MSR 0x610)"),
+    defv("smi_count", "SMI Count", Power, "System Management Interrupts seen (MSR 0x34)"),
     // ================= Topology ======================================================
     defk("x2apic", "x2APIC", Topology, "Extended APIC addressing", "x2apic"),
     defk("htt", "HTT (multi-logical)", Topology, "Multiple logical CPUs/package", "ht"),
@@ -185,6 +216,10 @@ pub const FEATURES: &[FeatureDef] = &[
     def("cdp_l3", "L3 CDP", Rdt, "L3 code/data prioritization"),
     def("mba", "MBA", Rdt, "Memory-bandwidth allocation"),
     def("resctrl", "resctrl mounted", Rdt, "/sys/fs/resctrl available for use"),
+    // ================= Platform & Firmware ===========================================
+    def("msr", "MSR access", Firmware, "/dev/cpu/*/msr readable (root + msr module)"),
+    def("feature_control_locked", "IA32_FEATURE_CONTROL lock", Firmware, "Feature-control MSR locked by firmware"),
+    defv("boot_guard", "Boot Guard (SACM info)", Firmware, "MSR 0x13A readable (ACM/verified-boot state)"),
 ];
 
 /// Feature with no kernel-flag mapping.
@@ -201,6 +236,21 @@ const fn def(
         description,
         min_privilege: User,
         cpuinfo_flag: None,
+        inline_detail: false,
+    }
+}
+
+/// Value/detail feature: the reporter shows the detection's detail inline (a value or
+/// a mitigation string) rather than the probe names.
+const fn defv(
+    id: &'static str,
+    name: &'static str,
+    category: Category,
+    description: &'static str,
+) -> FeatureDef {
+    FeatureDef {
+        inline_detail: true,
+        ..def(id, name, category, description)
     }
 }
 
@@ -222,6 +272,7 @@ const fn defk(
         description,
         min_privilege: User,
         cpuinfo_flag,
+        inline_detail: false,
     }
 }
 

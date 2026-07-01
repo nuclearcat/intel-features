@@ -8,9 +8,9 @@ See [`PLAN.md`](PLAN.md) for the full feature catalog and roadmap.
 
 ## Status
 
-Milestones **M0** (scaffolding), **M1** (CPUID) and **M2** (sysfs/procfs) are complete.
-The catalog covers ~145 features across ISA, security, CPU vulnerabilities, virtualization,
-power, topology, performance-monitoring and RDT. Four probes run today:
+Milestones **M0**–**M3** are complete. The catalog covers ~175 features across ISA,
+security, CPU vulnerabilities, architectural capabilities, virtualization, power,
+topology, performance-monitoring, RDT and firmware. Five probes run today:
 
 * **cpuid** — `raw-cpuid` plus direct leaf reads for bits it doesn't expose, executed
   **per logical core** (pinned via `sched_setaffinity`) so hybrid P/E asymmetries are
@@ -21,8 +21,12 @@ power, topology, performance-monitoring and RDT. Four probes run today:
   intel_idle C-states, RAPL powercap domains, resctrl mount.
 * **linux-vuln** — `/sys/.../vulnerabilities/*`, reporting mitigated/not-affected vs
   vulnerable with the kernel's mitigation string inline.
+* **msr** *(root)* — read-only `/dev/cpu/0/msr`: IA32_ARCH_CAPABILITIES immunities,
+  FEATURE_CONTROL (VMX enable/lock), VMX capability MSRs (EPT/VPID/APICv/…),
+  TjMax/TDP/power limits, SMI count, Boot Guard. Degrades to one status line without
+  root; run with `sudo` for the full picture.
 
-Later milestones: M3 = MSRs (root), M4 = PCI/device probes, M5 = firmware tables.
+Later milestones: M4 = PCI/device probes, M5 = firmware tables (ACPI/SMBIOS/EFI).
 Target platform is Linux/x86-64.
 
 ## Build & run
@@ -52,6 +56,7 @@ probes/    — one module per mechanism, each emitting (feature_id, Detection) p
   procfs   — /proc/cpuinfo kernel flags (cross-check against CPUID)
   sysfs    — /sys, /dev runtime state (SMT, /dev/kvm, TPM, pstate, RAPL, …)
   vulns    — /sys/.../vulnerabilities/* mitigation status
+  msr      — /dev/cpu/0/msr, read-only (root); degrades gracefully otherwise
 report     — folds all detections against the catalog; renders text or JSON
 ```
 

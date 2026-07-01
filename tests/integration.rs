@@ -146,6 +146,39 @@ fn cpuinfo_flags_are_well_formed() {
     }
 }
 
+/// Vulnerability and MSR value features must be flagged for inline-detail rendering.
+#[test]
+fn value_features_are_inline() {
+    for id in [
+        "meltdown",
+        "spectre_v2",
+        "tjmax",
+        "pkg_tdp",
+        "smi_count",
+        "boot_guard",
+    ] {
+        let f = catalog::find(id).unwrap_or_else(|| panic!("{id} missing"));
+        assert!(f.inline_detail, "{id} should be inline_detail");
+    }
+    // A plain capability must not be.
+    assert!(!catalog::find("avx2").unwrap().inline_detail);
+}
+
+/// Boolean capability features must never carry a `/proc/cpuinfo` flag *and* be a value
+/// feature (would double-render). Sanity check on catalog consistency.
+#[test]
+fn inline_features_have_no_kernel_flag() {
+    for f in catalog::FEATURES {
+        if f.inline_detail {
+            assert!(
+                f.cpuinfo_flag.is_none(),
+                "{} is inline yet has a flag",
+                f.id
+            );
+        }
+    }
+}
+
 #[test]
 fn json_output_is_produced() {
     let report = Report::build(HashMap::new(), None, Privilege::Root);

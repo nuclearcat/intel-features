@@ -7,6 +7,7 @@
 //! feature means adding a catalog entry plus teaching some probe to emit it.
 
 pub mod cpuid;
+pub mod msr;
 pub mod procfs;
 pub mod sysfs;
 pub mod vulns;
@@ -53,6 +54,7 @@ pub fn all() -> Vec<Box<dyn Probe>> {
         Box::new(procfs::ProcfsProbe),
         Box::new(sysfs::SysfsProbe),
         Box::new(vulns::VulnProbe),
+        Box::new(msr::MsrProbe),
     ]
 }
 

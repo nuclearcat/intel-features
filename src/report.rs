@@ -22,6 +22,9 @@ pub struct FeatureReport {
     pub status: Status,
     /// Every probe's finding for this feature, in probe run order.
     pub detections: Vec<Detection>,
+    /// Render the winning detection's detail inline instead of the probe names.
+    #[serde(skip)]
+    pub inline_detail: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -82,6 +85,7 @@ impl Report {
                     description: def.description,
                     status,
                     detections,
+                    inline_detail: def.inline_detail,
                 });
             }
             categories.push(CategoryReport {
@@ -188,7 +192,7 @@ fn render_feature(s: &mut String, f: &FeatureReport, opts: TextOptions) {
     // everything else the contributing probe names are the useful trailing hint.
     let trailing = if f.detections.is_empty() {
         "not probed".to_string()
-    } else if f.category == Category::Vulnerabilities {
+    } else if f.inline_detail {
         f.detections
             .iter()
             .max_by_key(|d| d.status.rank())

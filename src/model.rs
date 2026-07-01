@@ -119,6 +119,7 @@ pub enum Category {
     Isa,
     Security,
     Vulnerabilities,
+    ArchCaps,
     Virtualization,
     Power,
     Topology,
@@ -133,6 +134,7 @@ impl Category {
         Category::Isa,
         Category::Security,
         Category::Vulnerabilities,
+        Category::ArchCaps,
         Category::Virtualization,
         Category::Power,
         Category::Topology,
@@ -146,6 +148,7 @@ impl Category {
             Category::Isa => "Instruction Set Extensions",
             Category::Security => "Security",
             Category::Vulnerabilities => "CPU Vulnerabilities & Mitigations",
+            Category::ArchCaps => "Architectural Capabilities (IA32_ARCH_CAPABILITIES)",
             Category::Virtualization => "Virtualization",
             Category::Power => "Power & Thermal",
             Category::Topology => "Topology",
@@ -174,4 +177,8 @@ pub struct FeatureDef {
     /// Corresponding `/proc/cpuinfo` flag name, if the kernel advertises one. Used by
     /// the procfs probe for corroboration and by the disparity cross-check.
     pub cpuinfo_flag: Option<&'static str>,
+    /// When true, the reporter shows the winning detection's *detail* inline (e.g. a
+    /// value like "100 °C" or a mitigation string) instead of the contributing probe
+    /// names, because for this feature the detail is the payload.
+    pub inline_detail: bool,
 }

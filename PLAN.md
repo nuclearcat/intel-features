@@ -290,11 +290,26 @@ features need root/msr.
   still shows them. Verified on 275HX / kernel 6.17: 146 features, 0 vulnerable,
   turbo+HWP+RAPL+intel_idle enabled, microcode 0x11b. 15 tests, fmt+clippy clean.
 
-### M3 — MSR probe (root)
-- [ ] Safe MSR read layer (open /dev/cpu/N/msr, handle #GP → EIO gracefully,
-      never write MSRs)
-- [ ] IA32_ARCH_CAPABILITIES, FEATURE_CONTROL, Boot Guard, turbo/thermal/RAPL,
-      SMI count, VMX capability MSRs, TME/MKTME
+### M3 — MSR probe (root)  ✅ DONE
+- [x] Read-only MSR layer: `pread` on `/dev/cpu/0/msr`, never writes. Without root or
+      the msr module it emits one `msr: disabled` status line and leaves MSR-only
+      features "not probed" (hidden by default). A specific MSR that #GP's (EIO) is
+      skipped, not fatal. VMX-cap reads gated behind IA32_VMX_BASIC to avoid #GP spam
+      (verified: 0 "unchecked MSR" dmesg lines).
+- [x] IA32_ARCH_CAPABILITIES (0x10A) → new "Architectural Capabilities" category
+      (RDCL_NO, eIBRS, MDS_NO, TAA_NO, BHI_NO, PBRSB_NO, GDS_NO, RFDS_NO, …) — these
+      cross-validate the vulnerabilities section. IA32_FEATURE_CONTROL (0x3A) →
+      VMX enabled/disabled/locked (aggregates onto cpuid/procfs `vmx`), lock state,
+      SGX enable. VMX capability MSRs (0x481/0x48B/0x48C) → EPT, VPID, EPT A/D,
+      EPT 1GB, unrestricted guest, APICv, posted interrupts, VMCS shadowing. Thermal
+      /RAPL (0x1A2/0x606/0x610/0x614) → TjMax, package TDP, PL1/PL2 (shown inline).
+      SMI count (0x34), Boot Guard SACM info (0x13A). TME/MKTME deferred (needs the
+      0x981/0x982 key-count decode — small follow-up).
+- [x] Reporter gained an `inline_detail` feature flag (replaces the vulnerability
+      category special-case): value features like TjMax/TDP and mitigation strings
+      render their detail inline instead of probe names.
+- Verified as root on 275HX: 176 features, 5 probes, 11 arch-cap immunities present,
+      TjMax 105°C, TDP 55W, PL1 165W/PL2 210W, VMX enabled, 0 disparities. 17 tests.
 
 ### M4 — PCI + device probes
 - [ ] PCI scan via sysfs; device-ID tables for PCH, MEI, QAT/DSA/IAA/DLB, VMD,
