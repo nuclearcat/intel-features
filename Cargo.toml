@@ -1,0 +1,22 @@
+[package]
+name = "intel-features"
+version = "0.1.0"
+edition = "2021"
+description = "Modular detector for Intel CPU and platform features"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lib]
+name = "intel_features"
+path = "src/lib.rs"
+
+[[bin]]
+name = "intel-features"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+strip = true
