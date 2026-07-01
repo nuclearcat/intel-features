@@ -111,7 +111,14 @@ impl Report {
             let visible: Vec<&FeatureReport> = cat
                 .features
                 .iter()
-                .filter(|f| !(opts.hide_absent && f.status == Status::Absent))
+                .filter(|f| {
+                    if !opts.hide_absent {
+                        return true;
+                    }
+                    // Default view hides absent features and ones no probe covered
+                    // ("not probed"); `--all` shows everything.
+                    f.status != Status::Absent && !f.detections.is_empty()
+                })
                 .collect();
             if visible.is_empty() {
                 continue;
@@ -161,6 +168,9 @@ impl Report {
                     format!("{} logical CPU(s)", id.logical_cpus)
                 };
                 s.push_str(&format!("  Topology:  {topo}\n"));
+                if let Some(mc) = &id.microcode {
+                    s.push_str(&format!("  Microcode: {mc}\n"));
+                }
             }
             None => s.push_str("  CPU:       (CPUID unavailable on this architecture)\n"),
         }
@@ -174,8 +184,16 @@ impl Report {
 
 fn render_feature(s: &mut String, f: &FeatureReport, opts: TextOptions) {
     let glyph = colorize(f.status.glyph(), f.status.color(), opts.color);
-    let sources = if f.detections.is_empty() {
+    // For vulnerabilities the mitigation string is the point, so show it inline; for
+    // everything else the contributing probe names are the useful trailing hint.
+    let trailing = if f.detections.is_empty() {
         "not probed".to_string()
+    } else if f.category == Category::Vulnerabilities {
+        f.detections
+            .iter()
+            .max_by_key(|d| d.status.rank())
+            .and_then(|d| d.detail.clone())
+            .unwrap_or_default()
     } else {
         f.detections
             .iter()
@@ -193,7 +211,7 @@ fn render_feature(s: &mut String, f: &FeatureReport, opts: TextOptions) {
         glyph,
         f.name,
         label,
-        dim(&sources, opts.color)
+        dim(&trailing, opts.color)
     ));
     if opts.verbose {
         for d in &f.detections {

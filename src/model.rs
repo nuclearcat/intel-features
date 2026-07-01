@@ -118,6 +118,7 @@ pub enum Privilege {
 pub enum Category {
     Isa,
     Security,
+    Vulnerabilities,
     Virtualization,
     Power,
     Topology,
@@ -131,6 +132,7 @@ impl Category {
     pub const ORDER: &'static [Category] = &[
         Category::Isa,
         Category::Security,
+        Category::Vulnerabilities,
         Category::Virtualization,
         Category::Power,
         Category::Topology,
@@ -143,6 +145,7 @@ impl Category {
         match self {
             Category::Isa => "Instruction Set Extensions",
             Category::Security => "Security",
+            Category::Vulnerabilities => "CPU Vulnerabilities & Mitigations",
             Category::Virtualization => "Virtualization",
             Category::Power => "Power & Thermal",
             Category::Topology => "Topology",

@@ -109,6 +109,30 @@ pub const FEATURES: &[FeatureDef] = &[
     def("tme", "TME", Security, "Total Memory Encryption"),
     defk("lam", "LAM", Security, "Linear Address Masking", "lam"),
     defk("tpm", "TPM", Security, "Trusted Platform Module device present", ""),
+    // ================= CPU Vulnerabilities & Mitigations =============================
+    // ids are the kernel filenames under /sys/devices/system/cpu/vulnerabilities/.
+    // The vulns probe enumerates that directory; any file with no entry here is
+    // collected under `vuln_other` rather than silently dropped.
+    def("meltdown", "Meltdown", Vulnerabilities, "Rogue data cache load (CVE-2017-5754)"),
+    def("spectre_v1", "Spectre v1", Vulnerabilities, "Bounds-check bypass"),
+    def("spectre_v2", "Spectre v2", Vulnerabilities, "Branch-target injection"),
+    def("spec_store_bypass", "Spectre v4 (SSB)", Vulnerabilities, "Speculative store bypass"),
+    def("l1tf", "L1TF", Vulnerabilities, "L1 Terminal Fault / Foreshadow"),
+    def("mds", "MDS", Vulnerabilities, "Microarchitectural Data Sampling"),
+    def("tsx_async_abort", "TAA", Vulnerabilities, "TSX Asynchronous Abort"),
+    def("itlb_multihit", "iTLB Multihit", Vulnerabilities, "Instruction-TLB multihit"),
+    def("srbds", "SRBDS", Vulnerabilities, "Special Register Buffer Data Sampling"),
+    def("mmio_stale_data", "MMIO Stale Data", Vulnerabilities, "Processor MMIO stale data"),
+    def("retbleed", "Retbleed", Vulnerabilities, "Return-stack-buffer underflow"),
+    def("gather_data_sampling", "GDS (Downfall)", Vulnerabilities, "Gather Data Sampling"),
+    def("reg_file_data_sampling", "RFDS", Vulnerabilities, "Register File Data Sampling"),
+    def("spec_rstack_overflow", "SRSO", Vulnerabilities, "Speculative return-stack overflow"),
+    def("indirect_target_selection", "ITS", Vulnerabilities, "Indirect Target Selection"),
+    def("ghostwrite", "GhostWrite", Vulnerabilities, "Architectural write vulnerability"),
+    def("old_microcode", "Old Microcode", Vulnerabilities, "Running outdated microcode"),
+    def("tsa", "TSA", Vulnerabilities, "Transient Scheduler Attack"),
+    def("vmscape", "VMScape", Vulnerabilities, "Guest→host branch-predictor leak"),
+    def("vuln_other", "Other (uncatalogued)", Vulnerabilities, "Kernel-listed vulns not yet in catalog"),
     // ================= Virtualization ================================================
     defk("vmx", "VT-x (VMX)", Virtualization, "Hardware virtualization", "vmx"),
     defk("smx", "SMX (TXT)", Virtualization, "Safer Mode Extensions", "smx"),
@@ -130,6 +154,10 @@ pub const FEATURES: &[FeatureDef] = &[
     defk("epb", "Energy Perf Bias", Power, "IA32_ENERGY_PERF_BIAS", "epb"),
     defk("tm2", "Thermal Monitor 2", Power, "TM2 throttling", "tm2"),
     defk("pln", "Power Limit Notification", Power, "PLN interrupt", "pln"),
+    // Runtime driver/state (sysfs)
+    def("intel_pstate", "intel_pstate driver", Power, "P-state governor driver active"),
+    def("intel_idle", "intel_idle driver", Power, "C-state idle driver active"),
+    def("rapl", "RAPL powercap", Power, "Running Average Power Limit domains exposed"),
     // ================= Topology ======================================================
     defk("x2apic", "x2APIC", Topology, "Extended APIC addressing", "x2apic"),
     defk("htt", "HTT (multi-logical)", Topology, "Multiple logical CPUs/package", "ht"),
@@ -156,6 +184,7 @@ pub const FEATURES: &[FeatureDef] = &[
     def("cat_l2", "L2 CAT", Rdt, "L2 cache allocation"),
     def("cdp_l3", "L3 CDP", Rdt, "L3 code/data prioritization"),
     def("mba", "MBA", Rdt, "Memory-bandwidth allocation"),
+    def("resctrl", "resctrl mounted", Rdt, "/sys/fs/resctrl available for use"),
 ];
 
 /// Feature with no kernel-flag mapping.

@@ -24,6 +24,9 @@ pub struct Identity {
     pub hybrid: bool,
     pub p_cores: usize,
     pub e_cores: usize,
+    /// Loaded microcode revision (from sysfs), e.g. `"0x11b"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub microcode: Option<String>,
 }
 
 pub struct CpuidProbe;
@@ -516,6 +519,7 @@ fn build_identity(cores: &[CoreScan]) -> Identity {
         .iter()
         .any(|c| c.feats.iter().any(|(id, v, _)| *id == "hybrid" && *v))
         || (p_cores > 0 && e_cores > 0);
+    let microcode = read_microcode();
     match ci {
         Some(ci) => Identity {
             vendor: ci.vendor.clone(),
@@ -527,6 +531,7 @@ fn build_identity(cores: &[CoreScan]) -> Identity {
             hybrid,
             p_cores,
             e_cores,
+            microcode,
         },
         None => Identity {
             vendor: String::new(),
@@ -538,8 +543,26 @@ fn build_identity(cores: &[CoreScan]) -> Identity {
             hybrid,
             p_cores,
             e_cores,
+            microcode,
         },
     }
+}
+
+/// Loaded microcode revision from sysfs (falls back to `/proc/cpuinfo`).
+#[cfg(target_arch = "x86_64")]
+fn read_microcode() -> Option<String> {
+    if let Ok(v) = std::fs::read_to_string("/sys/devices/system/cpu/cpu0/microcode/version") {
+        return Some(v.trim().to_string());
+    }
+    let info = std::fs::read_to_string("/proc/cpuinfo").ok()?;
+    for line in info.lines() {
+        if let Some(rest) = line.strip_prefix("microcode") {
+            if let Some((_, v)) = rest.split_once(':') {
+                return Some(v.trim().to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Parse `/sys/devices/system/cpu/online` (e.g. `"0-3,8-11"`). Falls back to `[0]`.

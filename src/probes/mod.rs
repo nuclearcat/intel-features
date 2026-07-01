@@ -9,6 +9,7 @@
 pub mod cpuid;
 pub mod procfs;
 pub mod sysfs;
+pub mod vulns;
 
 use crate::model::{Detection, Privilege};
 
@@ -51,6 +52,7 @@ pub fn all() -> Vec<Box<dyn Probe>> {
         Box::new(cpuid::CpuidProbe),
         Box::new(procfs::ProcfsProbe),
         Box::new(sysfs::SysfsProbe),
+        Box::new(vulns::VulnProbe),
     ]
 }
 

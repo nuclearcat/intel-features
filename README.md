@@ -8,19 +8,22 @@ See [`PLAN.md`](PLAN.md) for the full feature catalog and roadmap.
 
 ## Status
 
-Milestones **M0** (scaffolding) and **M1** (CPUID) are complete. The catalog covers ~110
-CPUID-detectable features across ISA, security, virtualization, power, topology,
-performance-monitoring and RDT. Three probes run today:
+Milestones **M0** (scaffolding), **M1** (CPUID) and **M2** (sysfs/procfs) are complete.
+The catalog covers ~145 features across ISA, security, CPU vulnerabilities, virtualization,
+power, topology, performance-monitoring and RDT. Four probes run today:
 
 * **cpuid** — `raw-cpuid` plus direct leaf reads for bits it doesn't expose, executed
   **per logical core** (pinned via `sched_setaffinity`) so hybrid P/E asymmetries are
-  reported. The banner shows P/E core counts.
+  reported. The banner shows P/E core counts and microcode revision.
 * **procfs** — reads `/proc/cpuinfo` flags to corroborate CPUID; the reporter prints a
   cross-check section for any silicon-vs-kernel disparity.
-* **linux-sysfs** — runtime state (SMT enabled, `/dev/kvm`, TPM).
+* **linux-sysfs** — runtime state: SMT, `/dev/kvm`, TPM, intel_pstate/HWP/turbo,
+  intel_idle C-states, RAPL powercap domains, resctrl mount.
+* **linux-vuln** — `/sys/.../vulnerabilities/*`, reporting mitigated/not-affected vs
+  vulnerable with the kernel's mitigation string inline.
 
-Later milestones: M2 = more sysfs/procfs (vulnerabilities, cpufreq, RAPL), M3 = MSRs
-(root), M4 = PCI/device probes, M5 = firmware tables. Target platform is Linux/x86-64.
+Later milestones: M3 = MSRs (root), M4 = PCI/device probes, M5 = firmware tables.
+Target platform is Linux/x86-64.
 
 ## Build & run
 
@@ -47,7 +50,8 @@ catalog    — the static registry of known features (id, name, category, descri
 probes/    — one module per mechanism, each emitting (feature_id, Detection) pairs
   cpuid    — the CPUID instruction, per-core (ring 3, always available)
   procfs   — /proc/cpuinfo kernel flags (cross-check against CPUID)
-  sysfs    — /sys, /dev runtime state (SMT enabled, /dev/kvm, TPM, …)
+  sysfs    — /sys, /dev runtime state (SMT, /dev/kvm, TPM, pstate, RAPL, …)
+  vulns    — /sys/.../vulnerabilities/* mitigation status
 report     — folds all detections against the catalog; renders text or JSON
 ```
 

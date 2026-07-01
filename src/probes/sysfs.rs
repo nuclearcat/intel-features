@@ -23,8 +23,19 @@ impl Probe for SysfsProbe {
         detect_smt(&mut out);
         detect_kvm(&mut out);
         detect_tpm(&mut out);
+        detect_pstate(&mut out);
+        detect_idle(&mut out);
+        detect_rapl(&mut out);
+        detect_resctrl(&mut out);
         out
     }
+}
+
+/// Read a sysfs file, trimmed. `None` if absent/unreadable.
+fn read_trim(path: &str) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 /// SMT enabled/disabled from `/sys/devices/system/cpu/smt/active`.
@@ -87,4 +98,121 @@ fn detect_tpm(out: &mut Vec<(&'static str, Detection)>) {
         Detection::with_detail(Status::Absent, "linux-sysfs", "no tpm0 device")
     };
     out.push(("tpm", det));
+}
+
+/// P-state driver, and the runtime enabled/disabled state of HWP and Turbo. The turbo
+/// and hwp detections aggregate onto the same features as CPUID's silicon capability,
+/// giving the Present-vs-Enabled distinction.
+fn detect_pstate(out: &mut Vec<(&'static str, Detection)>) {
+    let driver = read_trim("/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver");
+    let governor = read_trim("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
+
+    if let Some(drv) = &driver {
+        let is_pstate = drv == "intel_pstate";
+        let detail = match &governor {
+            Some(g) => format!("driver={drv}, governor={g}"),
+            None => format!("driver={drv}"),
+        };
+        let status = if is_pstate {
+            Status::Enabled
+        } else {
+            Status::Absent
+        };
+        out.push((
+            "intel_pstate",
+            Detection::with_detail(status, "linux-sysfs", detail),
+        ));
+    }
+
+    // HWP is active when intel_pstate runs in "active" mode.
+    if let Some(status) = read_trim("/sys/devices/system/cpu/intel_pstate/status") {
+        let det = match status.as_str() {
+            "active" => {
+                Detection::with_detail(Status::Enabled, "linux-sysfs", "intel_pstate active (HWP)")
+            }
+            other => Detection::with_detail(
+                Status::Present,
+                "linux-sysfs",
+                format!("intel_pstate mode: {other}"),
+            ),
+        };
+        out.push(("hwp", det));
+    }
+
+    // Turbo: no_turbo=1 means turbo is disabled.
+    if let Some(no_turbo) = read_trim("/sys/devices/system/cpu/intel_pstate/no_turbo") {
+        let det = match no_turbo.as_str() {
+            "0" => Detection::with_detail(Status::Enabled, "linux-sysfs", "no_turbo=0"),
+            "1" => {
+                Detection::with_detail(Status::Disabled, "linux-sysfs", "no_turbo=1 (turbo off)")
+            }
+            other => {
+                Detection::with_detail(Status::Unknown, "linux-sysfs", format!("no_turbo={other}"))
+            }
+        };
+        out.push(("turbo", det));
+    }
+}
+
+/// C-state idle driver, with the available C-state names in the detail.
+fn detect_idle(out: &mut Vec<(&'static str, Detection)>) {
+    let Some(driver) = read_trim("/sys/devices/system/cpu/cpuidle/current_driver") else {
+        return;
+    };
+    let mut states = Vec::new();
+    for i in 0..16 {
+        match read_trim(&format!(
+            "/sys/devices/system/cpu/cpu0/cpuidle/state{i}/name"
+        )) {
+            Some(name) => states.push(name),
+            None => break,
+        }
+    }
+    let detail = format!("driver={driver}, states: {}", states.join(" "));
+    let status = if driver == "intel_idle" {
+        Status::Enabled
+    } else {
+        Status::Absent
+    };
+    out.push((
+        "intel_idle",
+        Detection::with_detail(status, "linux-sysfs", detail),
+    ));
+}
+
+/// RAPL power domains under `/sys/class/powercap`.
+fn detect_rapl(out: &mut Vec<(&'static str, Detection)>) {
+    let mut domains = Vec::new();
+    for i in 0..8 {
+        match read_trim(&format!("/sys/class/powercap/intel-rapl:{i}/name")) {
+            Some(name) => domains.push(name),
+            None => break,
+        }
+    }
+    let det = if domains.is_empty() {
+        Detection::with_detail(
+            Status::Absent,
+            "linux-sysfs",
+            "no intel-rapl powercap domains",
+        )
+    } else {
+        Detection::with_detail(
+            Status::Enabled,
+            "linux-sysfs",
+            format!("domains: {}", domains.join(", ")),
+        )
+    };
+    out.push(("rapl", det));
+}
+
+/// resctrl filesystem: mounted and usable when `/sys/fs/resctrl/info` exists.
+fn detect_resctrl(out: &mut Vec<(&'static str, Detection)>) {
+    let det = if Path::new("/sys/fs/resctrl/info").exists() {
+        Detection::with_detail(Status::Enabled, "linux-sysfs", "mounted at /sys/fs/resctrl")
+    } else if Path::new("/sys/fs/resctrl").exists() {
+        Detection::with_detail(Status::Present, "linux-sysfs", "present but not mounted")
+    } else {
+        Detection::with_detail(Status::Absent, "linux-sysfs", "no /sys/fs/resctrl")
+    };
+    out.push(("resctrl", det));
 }

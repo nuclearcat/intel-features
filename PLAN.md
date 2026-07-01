@@ -275,9 +275,20 @@ features need root/msr.
 - NOTE: target is Linux/x86-64 (per-core scan uses `sched_setaffinity`, topology reads
   `/sys/.../online`). Non-x86 compiles but reports nothing from CPUID.
 
-### M2 — sysfs/procfs probe
-- [ ] Vulnerabilities/mitigations, cpufreq/HWP state, cpuidle, microcode revision,
-      resctrl, powercap/RAPL — no root needed for most
+### M2 — sysfs/procfs probe  ✅ DONE
+- [x] Vulnerabilities/mitigations: new `linux-vuln` probe enumerates
+      `/sys/devices/system/cpu/vulnerabilities/*` dynamically (20 catalogued +
+      `vuln_other` catch-all so newer-kernel entries surface). Maps kernel strings to
+      Enabled=protected (not affected / mitigated, with the mitigation text shown inline)
+      / Disabled=vulnerable. New "CPU Vulnerabilities & Mitigations" category.
+- [x] cpufreq/HWP + turbo runtime state, C-state idle driver, RAPL powercap domains,
+      resctrl mount state — added to `linux-sysfs`. Turbo and HWP aggregate onto their
+      CPUID silicon-capability entries (Present→Enabled/Disabled via intel_pstate
+      no_turbo/status). New features: intel_pstate, intel_idle, rapl (Power), resctrl (Rdt).
+- [x] Microcode revision in the banner (sysfs, falls back to /proc/cpuinfo).
+- Default view now also hides "not probed" features (no probe covered them); `--all`
+  still shows them. Verified on 275HX / kernel 6.17: 146 features, 0 vulnerable,
+  turbo+HWP+RAPL+intel_idle enabled, microcode 0x11b. 15 tests, fmt+clippy clean.
 
 ### M3 — MSR probe (root)
 - [ ] Safe MSR read layer (open /dev/cpu/N/msr, handle #GP → EIO gracefully,
