@@ -5,6 +5,10 @@
 //! `msr` status detection explaining why, and every MSR-only feature is simply left
 //! "not probed" (hidden by default, shown with `--all`).
 //!
+//! If the device node is missing (module not loaded) and we are root, the probe runs
+//! `modprobe msr` and retries — the one state change this otherwise read-only tool
+//! makes, reported in the `msr` status line ("auto-loaded msr module").
+//!
 //! Individual MSRs may `#GP` if unimplemented on this part; the kernel surfaces that as
 //! `EIO`, which we treat as "feature not determinable here" and skip. We gate the most
 //! commonly-absent reads (VMX capability MSRs) behind a probe read so we don't provoke
@@ -26,24 +30,18 @@ impl Probe for MsrProbe {
         SRC
     }
 
-    fn detect(&self, _ctx: &Context) -> Vec<(&'static str, Detection)> {
+    fn detect(&self, ctx: &Context) -> Vec<(&'static str, Detection)> {
         let mut out = Vec::new();
-        let msr = match Msr::open(0) {
-            Ok(m) => m,
-            Err(e) => {
-                let reason = match e.kind() {
-                    io::ErrorKind::PermissionDenied => "requires root".to_string(),
-                    io::ErrorKind::NotFound => "no /dev/cpu/0/msr (modprobe msr)".to_string(),
-                    other => format!("open failed: {other:?}"),
-                };
+        let msr = match acquire(ctx) {
+            Ok((m, detail)) => {
+                out.push(("msr", Detection::with_detail(Status::Enabled, SRC, detail)));
+                m
+            }
+            Err(reason) => {
                 out.push(("msr", Detection::with_detail(Status::Disabled, SRC, reason)));
                 return out;
             }
         };
-        out.push((
-            "msr",
-            Detection::with_detail(Status::Enabled, SRC, "/dev/cpu/0/msr readable"),
-        ));
 
         arch_capabilities(&msr, &mut out);
         feature_control(&msr, &mut out);
@@ -68,6 +66,53 @@ impl Msr {
         self.0.read_exact_at(&mut buf, msr as u64)?;
         Ok(u64::from_le_bytes(buf))
     }
+}
+
+/// Open cpu0's MSR file, auto-loading the `msr` module first if it is simply not loaded
+/// and we are root. Returns the handle plus a human note for the `msr` status line, or a
+/// reason string on failure.
+fn acquire(ctx: &Context) -> Result<(Msr, String), String> {
+    match Msr::open(0) {
+        Ok(m) => return Ok((m, "/dev/cpu/0/msr readable".to_string())),
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
+            return Err("requires root".to_string());
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            // Device node missing → msr module not loaded. Only root can fix it.
+            if !ctx.is_root() {
+                return Err(
+                    "no /dev/cpu/0/msr (re-run as root to auto-load msr module)".to_string()
+                );
+            }
+        }
+        Err(e) => return Err(format!("open failed: {:?}", e.kind())),
+    }
+
+    // Root, module not loaded: try to load it, then reopen.
+    if let Err(reason) = load_msr_module() {
+        return Err(format!(
+            "msr module not loaded and modprobe failed: {reason}"
+        ));
+    }
+    match Msr::open(0) {
+        Ok(m) => Ok((m, "readable (auto-loaded msr module)".to_string())),
+        Err(e) => Err(format!("msr module loaded but open failed: {:?}", e.kind())),
+    }
+}
+
+/// Run `modprobe msr`. Tries `PATH` then the usual sbin locations, since a root shell's
+/// `PATH` does not always include sbin.
+fn load_msr_module() -> Result<(), String> {
+    let mut last = "modprobe not found".to_string();
+    for prog in ["modprobe", "/sbin/modprobe", "/usr/sbin/modprobe"] {
+        match std::process::Command::new(prog).arg("msr").status() {
+            Ok(s) if s.success() => return Ok(()),
+            Ok(s) => last = format!("`{prog} msr` exited {s}"),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => last = format!("`{prog}`: {e}"),
+        }
+    }
+    Err(last)
 }
 
 fn bit(v: u64, n: u32) -> bool {

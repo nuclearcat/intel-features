@@ -295,7 +295,9 @@ features need root/msr.
       the msr module it emits one `msr: disabled` status line and leaves MSR-only
       features "not probed" (hidden by default). A specific MSR that #GP's (EIO) is
       skipped, not fatal. VMX-cap reads gated behind IA32_VMX_BASIC to avoid #GP spam
-      (verified: 0 "unchecked MSR" dmesg lines).
+      (verified: 0 "unchecked MSR" dmesg lines). If the device node is missing and we are
+      root, the probe runs `modprobe msr` and retries (the one state change the tool
+      makes), reported as "auto-loaded msr module" in the status line.
 - [x] IA32_ARCH_CAPABILITIES (0x10A) → new "Architectural Capabilities" category
       (RDCL_NO, eIBRS, MDS_NO, TAA_NO, BHI_NO, PBRSB_NO, GDS_NO, RFDS_NO, …) — these
       cross-validate the vulnerabilities section. IA32_FEATURE_CONTROL (0x3A) →
