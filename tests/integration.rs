@@ -75,6 +75,77 @@ fn unknown_ids_are_ignored() {
     }
 }
 
+/// CPUID-present + kernel-flag-absent must raise a disparity note.
+#[test]
+fn disparity_cpuid_present_kernel_absent() {
+    let mut results: HashMap<&'static str, Vec<Detection>> = HashMap::new();
+    results.insert(
+        "aes",
+        vec![
+            Detection::new(Status::Present, "cpuid"),
+            Detection::new(Status::Absent, "procfs"),
+        ],
+    );
+    let report = Report::build(results, None, Privilege::User);
+    assert_eq!(report.notes.len(), 1);
+    assert!(
+        report.notes[0].contains("AES-NI"),
+        "note was: {}",
+        report.notes[0]
+    );
+}
+
+/// CPUID-absent + kernel-flag-present points at a decode gap in our probe.
+#[test]
+fn disparity_kernel_present_cpuid_absent() {
+    let mut results: HashMap<&'static str, Vec<Detection>> = HashMap::new();
+    results.insert(
+        "aes",
+        vec![
+            Detection::new(Status::Absent, "cpuid"),
+            Detection::new(Status::Present, "procfs"),
+        ],
+    );
+    let report = Report::build(results, None, Privilege::User);
+    assert_eq!(report.notes.len(), 1);
+    assert!(
+        report.notes[0].contains("decode gap"),
+        "note was: {}",
+        report.notes[0]
+    );
+}
+
+/// Agreement between CPUID and the kernel must produce no note.
+#[test]
+fn no_disparity_when_sources_agree() {
+    let mut results: HashMap<&'static str, Vec<Detection>> = HashMap::new();
+    results.insert(
+        "aes",
+        vec![
+            Detection::new(Status::Present, "cpuid"),
+            Detection::new(Status::Present, "procfs"),
+        ],
+    );
+    let report = Report::build(results, None, Privilege::User);
+    assert!(report.notes.is_empty());
+}
+
+/// Kernel-flag names in the catalog must be well-formed (lowercase, no whitespace).
+#[test]
+fn cpuinfo_flags_are_well_formed() {
+    for f in catalog::FEATURES {
+        if let Some(flag) = f.cpuinfo_flag {
+            assert!(!flag.is_empty(), "{} has empty flag", f.id);
+            assert!(
+                flag.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
+                "malformed flag {flag:?} for {}",
+                f.id
+            );
+        }
+    }
+}
+
 #[test]
 fn json_output_is_produced() {
     let report = Report::build(HashMap::new(), None, Privilege::Root);

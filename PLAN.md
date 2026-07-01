@@ -256,10 +256,24 @@ features need root/msr.
 - Two working probes: `cpuid` (std intrinsics, ~33 features) + `linux-sysfs` (SMT state,
   /dev/kvm, TPM). SMT is detected by both, exercising the Present-vs-Enabled model.
 
-### M1 — CPUID probe (biggest bang, zero privileges)
-- [ ] Integrate `raw-cpuid` crate; map catalog sections 1, 2 (cpuid parts), 3, 4, 5, 6, 7
-- [ ] Per-core CPUID execution via thread affinity (hybrid asymmetry, section 12)
-- [ ] Cross-check against /proc/cpuinfo flags
+### M1 — CPUID probe (biggest bang, zero privileges)  ✅ DONE
+- [x] Integrated `raw-cpuid` for the bulk of leaf decoding + direct `std::arch` reads
+      for bits it does not expose (SERIALIZE, MOVDIR*, CET-IBT, FSRM, hybrid, arch-LBR,
+      core type). Catalog grown to ~110 CPUID-detectable features across sections 1–7
+      (ISA, security, virtualization, power, topology, perfmon, RDT).
+- [x] Per-core CPUID via `sched_setaffinity` (pinned thread per online CPU). Aggregates
+      to the common subset; features present on only some cores are flagged
+      "asymmetric: N/M cores (P-cores only / E-cores only)". Topology banner reports
+      hybrid P/E core counts (leaf 0x1A; note: 0x40=Core/P, 0x20=Atom/E — verified
+      against kernel `cpu_capacity`, initial mapping was inverted and fixed).
+- [x] Cross-check against `/proc/cpuinfo`: new `procfs` probe corroborates each mapped
+      feature; reporter emits a "Cross-check" section for silicon-vs-kernel disparities
+      in both directions (firmware-masked, or a gap in our own decode).
+- Verified on Core Ultra 9 275HX: 122 features (85 present), 8P+16E detected, SMT
+  disabled (cpuid HTT + sysfs active=0), 0 disparities (CPUID agrees with kernel across
+  ~80 mapped flags). 11 tests, fmt+clippy clean.
+- NOTE: target is Linux/x86-64 (per-core scan uses `sched_setaffinity`, topology reads
+  `/sys/.../online`). Non-x86 compiles but reports nothing from CPUID.
 
 ### M2 — sysfs/procfs probe
 - [ ] Vulnerabilities/mitigations, cpufreq/HWP state, cpuidle, microcode revision,

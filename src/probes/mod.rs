@@ -7,6 +7,7 @@
 //! feature means adding a catalog entry plus teaching some probe to emit it.
 
 pub mod cpuid;
+pub mod procfs;
 pub mod sysfs;
 
 use crate::model::{Detection, Privilege};
@@ -46,7 +47,11 @@ pub trait Probe {
 
 /// The set of probes enabled in this build, in run order.
 pub fn all() -> Vec<Box<dyn Probe>> {
-    vec![Box::new(cpuid::CpuidProbe), Box::new(sysfs::SysfsProbe)]
+    vec![
+        Box::new(cpuid::CpuidProbe),
+        Box::new(procfs::ProcfsProbe),
+        Box::new(sysfs::SysfsProbe),
+    ]
 }
 
 /// Determine the effective privilege by reading the effective UID from

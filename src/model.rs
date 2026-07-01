@@ -121,6 +121,8 @@ pub enum Category {
     Virtualization,
     Power,
     Topology,
+    Perf,
+    Rdt,
     Firmware,
 }
 
@@ -132,6 +134,8 @@ impl Category {
         Category::Virtualization,
         Category::Power,
         Category::Topology,
+        Category::Perf,
+        Category::Rdt,
         Category::Firmware,
     ];
 
@@ -142,6 +146,8 @@ impl Category {
             Category::Virtualization => "Virtualization",
             Category::Power => "Power & Thermal",
             Category::Topology => "Topology",
+            Category::Perf => "Performance Monitoring & Trace",
+            Category::Rdt => "Resource Director Technology (RDT)",
             Category::Firmware => "Platform & Firmware",
         }
     }
@@ -162,4 +168,7 @@ pub struct FeatureDef {
     pub description: &'static str,
     /// Minimum privilege needed to *fully* determine this feature.
     pub min_privilege: Privilege,
+    /// Corresponding `/proc/cpuinfo` flag name, if the kernel advertises one. Used by
+    /// the procfs probe for corroboration and by the disparity cross-check.
+    pub cpuinfo_flag: Option<&'static str>,
 }

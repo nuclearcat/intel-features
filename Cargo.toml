@@ -6,6 +6,8 @@ description = "Modular detector for Intel CPU and platform features"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+libc = "0.2.186"
+raw-cpuid = "11.6.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

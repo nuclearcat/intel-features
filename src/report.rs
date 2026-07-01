@@ -39,6 +39,9 @@ pub struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub identity: Option<Identity>,
     pub categories: Vec<CategoryReport>,
+    /// Silicon-vs-kernel disparities found by cross-checking CPUID against
+    /// `/proc/cpuinfo` (see [`disparity_note`]).
+    pub notes: Vec<String>,
 }
 
 /// Rendering knobs for text output.
@@ -59,6 +62,7 @@ impl Report {
         privilege: Privilege,
     ) -> Report {
         let mut categories = Vec::new();
+        let mut notes = Vec::new();
         for &cat in Category::ORDER {
             let mut features = Vec::new();
             for def in catalog::FEATURES.iter().filter(|f| f.category == cat) {
@@ -68,6 +72,9 @@ impl Report {
                     .map(|d| d.status)
                     .max_by_key(|s| s.rank())
                     .unwrap_or(Status::Unknown);
+                if let Some(note) = disparity_note(def.name, &detections) {
+                    notes.push(note);
+                }
                 features.push(FeatureReport {
                     id: def.id,
                     name: def.name,
@@ -89,6 +96,7 @@ impl Report {
             privilege,
             identity,
             categories,
+            notes,
         }
     }
 
@@ -115,6 +123,14 @@ impl Report {
                 render_feature(&mut s, f, opts);
             }
         }
+        if !self.notes.is_empty() {
+            s.push('\n');
+            s.push_str(&bold("Cross-check (CPUID vs kernel)", opts.color));
+            s.push('\n');
+            for note in &self.notes {
+                s.push_str(&format!("  {} {}\n", colorize("!", "33", opts.color), note));
+            }
+        }
         s
     }
 
@@ -136,6 +152,15 @@ impl Report {
                     "  Vendor:    {}   family {:#x} model {:#x} stepping {}\n",
                     id.vendor, id.family, id.model, id.stepping
                 ));
+                let topo = if id.hybrid {
+                    format!(
+                        "{} logical, hybrid: {} P-core(s) + {} E-core(s)",
+                        id.logical_cpus, id.p_cores, id.e_cores
+                    )
+                } else {
+                    format!("{} logical CPU(s)", id.logical_cpus)
+                };
+                s.push_str(&format!("  Topology:  {topo}\n"));
             }
             None => s.push_str("  CPU:       (CPUID unavailable on this architecture)\n"),
         }
@@ -178,6 +203,39 @@ fn render_feature(s: &mut String, f: &FeatureReport, opts: TextOptions) {
                 opts.color,
             ));
         }
+    }
+}
+
+/// Compare the CPUID and procfs findings for one feature and, if they disagree in a
+/// meaningful way, produce a note. Two directions matter:
+///
+/// * CPUID present but kernel flag absent → the feature exists in silicon but the kernel
+///   does not advertise it: masked/disabled by firmware or microcode, or a kernel too old
+///   to name the flag.
+/// * CPUID absent but kernel flag present → the CPUID decode missed something the kernel
+///   sees. This points at a gap in *our* probe and is worth surfacing.
+fn disparity_note(name: &str, detections: &[Detection]) -> Option<String> {
+    let status_of = |src: &str| {
+        detections
+            .iter()
+            .find(|d| d.source == src)
+            .map(|d| d.status)
+    };
+    let cpuid = status_of("cpuid")?;
+    let procfs = status_of("procfs")?;
+    let present = |s: Status| matches!(s, Status::Present | Status::Enabled);
+    if present(cpuid) && procfs == Status::Absent {
+        Some(format!(
+            "{name}: CPUID reports present, but absent from /proc/cpuinfo \
+             (masked/firmware-disabled, or kernel too old)"
+        ))
+    } else if cpuid == Status::Absent && present(procfs) {
+        Some(format!(
+            "{name}: present in /proc/cpuinfo but CPUID probe reports absent \
+             (CPUID decode gap — please report)"
+        ))
+    } else {
+        None
     }
 }
 

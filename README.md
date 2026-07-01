@@ -8,10 +8,19 @@ See [`PLAN.md`](PLAN.md) for the full feature catalog and roadmap.
 
 ## Status
 
-Milestone **M0** (scaffolding) is complete: the end-to-end pipeline works with two probes
-(CPUID and a Linux sysfs/devnode probe) over a representative subset of the catalog.
-Coverage grows in later milestones (M1 = full CPUID via `raw-cpuid`, M2 = sysfs/procfs,
-M3 = MSRs, …).
+Milestones **M0** (scaffolding) and **M1** (CPUID) are complete. The catalog covers ~110
+CPUID-detectable features across ISA, security, virtualization, power, topology,
+performance-monitoring and RDT. Three probes run today:
+
+* **cpuid** — `raw-cpuid` plus direct leaf reads for bits it doesn't expose, executed
+  **per logical core** (pinned via `sched_setaffinity`) so hybrid P/E asymmetries are
+  reported. The banner shows P/E core counts.
+* **procfs** — reads `/proc/cpuinfo` flags to corroborate CPUID; the reporter prints a
+  cross-check section for any silicon-vs-kernel disparity.
+* **linux-sysfs** — runtime state (SMT enabled, `/dev/kvm`, TPM).
+
+Later milestones: M2 = more sysfs/procfs (vulnerabilities, cpufreq, RAPL), M3 = MSRs
+(root), M4 = PCI/device probes, M5 = firmware tables. Target platform is Linux/x86-64.
 
 ## Build & run
 
@@ -36,8 +45,9 @@ The modularity axis is the **detection mechanism**, because that is what actuall
 model      — Status / Detection / Category / FeatureDef / Privilege
 catalog    — the static registry of known features (id, name, category, description)
 probes/    — one module per mechanism, each emitting (feature_id, Detection) pairs
-  cpuid    — the CPUID instruction (ring 3, always available)
-  sysfs    — /sys, /proc, /dev runtime state (SMT enabled, /dev/kvm, TPM, …)
+  cpuid    — the CPUID instruction, per-core (ring 3, always available)
+  procfs   — /proc/cpuinfo kernel flags (cross-check against CPUID)
+  sysfs    — /sys, /dev runtime state (SMT enabled, /dev/kvm, TPM, …)
 report     — folds all detections against the catalog; renders text or JSON
 ```
 
