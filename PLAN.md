@@ -328,10 +328,20 @@ features need root/msr.
       0xae10 present; DSA/IAA/QAT/DLB/GNA/VMD/IPMI correctly absent. 194 features, 6
       probes, 23 tests (6 new PCI matcher unit tests), fmt+clippy clean.
 
-### M5 — Firmware tables
-- [ ] ACPI: DMAR, TPM2, NFIT, CEDT, HMAT, FADT flags (S0ix)
-- [ ] SMBIOS/DMI parsing (types 0, 1, 2, 16, 17, 38)
-- [ ] EFI vars: SecureBoot/SetupMode; ESRT
+### M5 — Firmware tables  ✅ DONE
+- [x] New `acpi` probe (no root): enumerates `/sys/firmware/acpi/tables/` — DMAR→VT-d
+      (combined with `/sys/class/iommu` for active vs supported), LPIT + `mem_sleep`
+      s2idle→S0ix, NFIT→pmem, CEDT→cxl, HMAT→hmat, HPET, SRAT→numa, WSMT→SMM mitigations,
+      TPM2→tpm 2.0.
+- [x] New `firmware` probe emitting `efi`- and `dmi`-sourced detections: UEFI boot,
+      Secure Boot / Setup Mode (efivars, non-root), ESRT; board/BIOS identity in the
+      banner from `/sys/class/dmi/id/*`; and a minimal SMBIOS structure walker over
+      `/sys/firmware/dmi/tables/DMI` (root) for memory ECC (type 16) and installed DIMMs
+      (type 17, e.g. "2 populated: 32 GB DDR5-6400").
+- [x] Report gained a `system` banner block (vendor/product/board + BIOS ver/date).
+- Verified on 275HX/LENOVO 83F5: VT-d + S0ix + UEFI + ESRT enabled, Secure Boot
+      disabled, WSMT present, DIMMs match dmidecode, NFIT/CEDT/HMAT/SRAT absent.
+      208 features, 9 probes, 26 tests (3 new SMBIOS-parser unit tests). fmt+clippy clean.
 
 ### M6 — Advanced / niche
 - [ ] MEI protocol client (ME version, AMT state)

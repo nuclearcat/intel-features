@@ -155,6 +155,7 @@ pub const FEATURES: &[FeatureDef] = &[
     defk("smx", "SMX (TXT)", Virtualization, "Safer Mode Extensions", "smx"),
     defk("hypervisor", "Running under hypervisor", Virtualization, "Guest/VM detection", "hypervisor"),
     def("kvm", "KVM usable", Virtualization, "/dev/kvm present and openable"),
+    def("vt_d", "VT-d (IOMMU)", Virtualization, "DMA remapping / IOMMU (ACPI DMAR)"),
     // VMX capability MSRs (0x481/0x48B/0x48C) — some also named by the kernel.
     defk("ept", "EPT", Virtualization, "Extended Page Tables (2nd-level address translation)", "ept"),
     defk("vpid", "VPID", Virtualization, "Virtual-processor IDs (tagged TLB)", "vpid"),
@@ -189,6 +190,7 @@ pub const FEATURES: &[FeatureDef] = &[
     defv("pkg_tdp", "Package TDP", Power, "Thermal design power (MSR 0x614)"),
     defv("pkg_power_limit", "Package Power Limit", Power, "RAPL PL1/PL2 (MSR 0x610)"),
     defv("smi_count", "SMI Count", Power, "System Management Interrupts seen (MSR 0x34)"),
+    def("s0ix", "S0ix / Modern Standby", Power, "Low-power S0 idle (ACPI LPIT / s2idle)"),
     // ================= Topology ======================================================
     defk("x2apic", "x2APIC", Topology, "Extended APIC addressing", "x2apic"),
     defk("htt", "HTT (multi-logical)", Topology, "Multiple logical CPUs/package", "ht"),
@@ -197,6 +199,8 @@ pub const FEATURES: &[FeatureDef] = &[
     defk("invariant_tsc", "Invariant TSC", Topology, "Constant-rate TSC", "constant_tsc"),
     defk("tsc_deadline", "TSC-Deadline Timer", Topology, "One-shot APIC deadline", "tsc_deadline_timer"),
     defk("monitor", "MONITOR/MWAIT", Topology, "Address-monitor wait", "monitor"),
+    def("hpet", "HPET", Topology, "High-Precision Event Timer (ACPI HPET)"),
+    def("numa", "NUMA (SRAT)", Topology, "Non-uniform memory affinity table"),
     // ================= Performance Monitoring & Trace ================================
     defk("arch_perfmon", "Arch PerfMon", Perf, "Architectural PMU", "arch_perfmon"),
     defk("pdcm", "PDCM", Perf, "Perf/debug capabilities MSR", "pdcm"),
@@ -236,10 +240,20 @@ pub const FEATURES: &[FeatureDef] = &[
     defv("thunderbolt", "Thunderbolt / USB4", Platform, "Thunderbolt/USB4 controller"),
     defv("vmd", "VMD", Platform, "Volume Management Device (NVMe remap)"),
     defv("ipmi", "IPMI / BMC", Platform, "Baseboard management controller"),
+    def("pmem", "Persistent Memory", Platform, "NVDIMM / Optane (ACPI NFIT)"),
+    def("cxl", "CXL", Platform, "Compute Express Link (ACPI CEDT)"),
+    def("hmat", "HMAT / Memory Tiering", Platform, "Heterogeneous memory attributes"),
+    defv("memory_ecc", "Memory ECC", Platform, "Error-correcting memory (SMBIOS type 16)"),
+    defv("memory_dimms", "Installed Memory", Platform, "Populated DIMMs (SMBIOS type 17)"),
     // ================= Platform & Firmware ===========================================
     def("msr", "MSR access", Firmware, "/dev/cpu/*/msr readable (root + msr module)"),
     def("feature_control_locked", "IA32_FEATURE_CONTROL lock", Firmware, "Feature-control MSR locked by firmware"),
     defv("boot_guard", "Boot Guard (SACM info)", Firmware, "MSR 0x13A readable (ACM/verified-boot state)"),
+    def("uefi_boot", "UEFI Boot", Firmware, "Booted via UEFI (vs legacy BIOS)"),
+    def("secure_boot", "Secure Boot", Firmware, "UEFI Secure Boot enabled (efivars)"),
+    def("setup_mode", "Setup Mode", Firmware, "UEFI Secure Boot setup mode (keys not enrolled)"),
+    def("esrt", "ESRT / Capsule Update", Firmware, "Firmware capsule update table (fwupd)"),
+    def("wsmt", "WSMT (SMM mitigations)", Firmware, "Windows SMM Security Mitigation Table"),
 ];
 
 /// Feature with no kernel-flag mapping.

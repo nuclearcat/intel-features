@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::catalog;
 use crate::model::{Category, Detection, Privilege, Status};
 use crate::probes::cpuid::Identity;
+use crate::probes::firmware::SystemInfo;
 
 /// Per-feature rolled-up result.
 #[derive(Debug, Serialize)]
@@ -41,6 +42,8 @@ pub struct Report {
     pub privilege: Privilege,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub identity: Option<Identity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<SystemInfo>,
     pub categories: Vec<CategoryReport>,
     /// Silicon-vs-kernel disparities found by cross-checking CPUID against
     /// `/proc/cpuinfo` (see [`disparity_note`]).
@@ -62,6 +65,7 @@ impl Report {
     pub fn build(
         mut results: HashMap<&'static str, Vec<Detection>>,
         identity: Option<Identity>,
+        system: Option<SystemInfo>,
         privilege: Privilege,
     ) -> Report {
         let mut categories = Vec::new();
@@ -99,6 +103,7 @@ impl Report {
             version: env!("CARGO_PKG_VERSION"),
             privilege,
             identity,
+            system,
             categories,
             notes,
         }
@@ -177,6 +182,23 @@ impl Report {
                 }
             }
             None => s.push_str("  CPU:       (CPUID unavailable on this architecture)\n"),
+        }
+        if let Some(sys) = &self.system {
+            let product = [sys.vendor.as_str(), sys.product.as_str()]
+                .iter()
+                .filter(|s| !s.is_empty())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !product.is_empty() {
+                s.push_str(&format!("  System:    {product}  (board {})\n", sys.board));
+            }
+            if !sys.bios_version.is_empty() {
+                s.push_str(&format!(
+                    "  BIOS:      {} {}  ({})\n",
+                    sys.bios_vendor, sys.bios_version, sys.bios_date
+                ));
+            }
         }
         let priv_note = match self.privilege {
             Privilege::Root => "root (all probes available)",

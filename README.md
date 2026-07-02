@@ -8,10 +8,10 @@ See [`PLAN.md`](PLAN.md) for the full feature catalog and roadmap.
 
 ## Status
 
-Milestones **M0**–**M4** are complete. The catalog covers ~195 features across ISA,
+Milestones **M0**–**M5** are complete. The catalog covers ~205 features across ISA,
 security, CPU vulnerabilities, architectural capabilities, virtualization, power,
 topology, performance-monitoring, RDT, on-SoC accelerators, chipset/platform devices and
-firmware. Six probes run today:
+firmware. Eight probes run today:
 
 * **cpuid** — `raw-cpuid` plus direct leaf reads for bits it doesn't expose, executed
   **per logical core** (pinned via `sched_setaffinity`) so hybrid P/E asymmetries are
@@ -29,8 +29,12 @@ firmware. Six probes run today:
 * **pci** — scans `/sys/bus/pci/devices` for Intel devices: chipset (PCH), iGPU, NPU,
   accelerators (DSA/IAA/QAT/DLB/GNA), CSME, NIC, Wi-Fi, audio, SMBus, SPI flash,
   Thunderbolt, VMD — matched by class / device-id / driver, enabled when a driver is bound.
+* **acpi** — `/sys/firmware/acpi/tables` presence: VT-d (DMAR), S0ix (LPIT/s2idle),
+  persistent memory (NFIT), CXL (CEDT), HMAT, HPET, NUMA (SRAT), WSMT, TPM 2.0.
+* **firmware** (`efi`/`dmi`) — UEFI boot, Secure Boot / Setup Mode, ESRT; board/BIOS
+  identity in the banner; SMBIOS memory ECC + installed DIMMs (root).
 
-Later milestones: M5 = firmware tables (ACPI/SMBIOS/EFI), M6 = MEI/TXT/server extras.
+Later milestones: M6 = MEI protocol / TXT / Boot Guard decode / server extras (CXL, SST).
 Target platform is Linux/x86-64.
 
 ## Build & run
@@ -62,6 +66,8 @@ probes/    — one module per mechanism, each emitting (feature_id, Detection) p
   vulns    — /sys/.../vulnerabilities/* mitigation status
   msr      — /dev/cpu/0/msr, read-only (root); degrades gracefully otherwise
   pci      — /sys/bus/pci Intel devices (chipset, accelerators, NIC, iGPU, …)
+  acpi     — /sys/firmware/acpi/tables presence (VT-d, S0ix, pmem, CXL, …)
+  firmware — UEFI (Secure Boot/ESRT) + SMBIOS/DMI (board, BIOS, memory)
 report     — folds all detections against the catalog; renders text or JSON
 ```
 

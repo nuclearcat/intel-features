@@ -50,7 +50,8 @@ fn main() -> ExitCode {
     }
 
     let identity = probes::cpuid::identity();
-    let report = Report::build(results, identity, ctx.privilege);
+    let system = probes::firmware::system_info();
+    let report = Report::build(results, identity, system, ctx.privilege);
 
     if args.json {
         println!("{}", report.to_json());

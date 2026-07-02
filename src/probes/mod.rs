@@ -6,7 +6,9 @@
 //! axis of the whole tool: adding a mechanism means adding a `Probe`, and adding a
 //! feature means adding a catalog entry plus teaching some probe to emit it.
 
+pub mod acpi;
 pub mod cpuid;
+pub mod firmware;
 pub mod msr;
 pub mod pci;
 pub mod procfs;
@@ -57,6 +59,8 @@ pub fn all() -> Vec<Box<dyn Probe>> {
         Box::new(vulns::VulnProbe),
         Box::new(msr::MsrProbe),
         Box::new(pci::PciProbe),
+        Box::new(acpi::AcpiProbe),
+        Box::new(firmware::FirmwareProbe),
     ]
 }
 

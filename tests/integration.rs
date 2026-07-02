@@ -23,7 +23,7 @@ fn catalog_ids_are_unique() {
 /// in exactly one category bucket.
 #[test]
 fn build_covers_every_feature() {
-    let report = Report::build(HashMap::new(), None, Privilege::User);
+    let report = Report::build(HashMap::new(), None, None, Privilege::User);
     assert_eq!(report.categories.len(), Category::ORDER.len());
     let total: usize = report.categories.iter().map(|c| c.features.len()).sum();
     assert_eq!(total, catalog::FEATURES.len());
@@ -32,7 +32,7 @@ fn build_covers_every_feature() {
 /// With no detections, every feature is Unknown.
 #[test]
 fn empty_results_are_all_unknown() {
-    let report = Report::build(HashMap::new(), None, Privilege::User);
+    let report = Report::build(HashMap::new(), None, None, Privilege::User);
     for cat in &report.categories {
         for f in &cat.features {
             assert_eq!(f.status, Status::Unknown, "{} should be unknown", f.id);
@@ -53,7 +53,7 @@ fn headline_prefers_higher_rank() {
             Detection::new(Status::Disabled, "linux-sysfs"),
         ],
     );
-    let report = Report::build(results, None, Privilege::User);
+    let report = Report::build(results, None, None, Privilege::User);
     let smt = find(&report, "smt");
     assert_eq!(smt.status, Status::Disabled);
     assert_eq!(smt.detections.len(), 2);
@@ -67,7 +67,7 @@ fn unknown_ids_are_ignored() {
         "not_a_real_feature",
         vec![Detection::new(Status::Present, "cpuid")],
     );
-    let report = Report::build(results, None, Privilege::User);
+    let report = Report::build(results, None, None, Privilege::User);
     for cat in &report.categories {
         for f in &cat.features {
             assert_ne!(f.id, "not_a_real_feature");
@@ -86,7 +86,7 @@ fn disparity_cpuid_present_kernel_absent() {
             Detection::new(Status::Absent, "procfs"),
         ],
     );
-    let report = Report::build(results, None, Privilege::User);
+    let report = Report::build(results, None, None, Privilege::User);
     assert_eq!(report.notes.len(), 1);
     assert!(
         report.notes[0].contains("AES-NI"),
@@ -106,7 +106,7 @@ fn disparity_kernel_present_cpuid_absent() {
             Detection::new(Status::Present, "procfs"),
         ],
     );
-    let report = Report::build(results, None, Privilege::User);
+    let report = Report::build(results, None, None, Privilege::User);
     assert_eq!(report.notes.len(), 1);
     assert!(
         report.notes[0].contains("decode gap"),
@@ -126,7 +126,7 @@ fn no_disparity_when_sources_agree() {
             Detection::new(Status::Present, "procfs"),
         ],
     );
-    let report = Report::build(results, None, Privilege::User);
+    let report = Report::build(results, None, None, Privilege::User);
     assert!(report.notes.is_empty());
 }
 
@@ -181,7 +181,7 @@ fn inline_features_have_no_kernel_flag() {
 
 #[test]
 fn json_output_is_produced() {
-    let report = Report::build(HashMap::new(), None, Privilege::Root);
+    let report = Report::build(HashMap::new(), None, None, Privilege::Root);
     let json = report.to_json();
     assert!(json.contains("\"tool\": \"intel-features\""));
     assert!(json.contains("\"privilege\": \"root\""));
@@ -197,7 +197,12 @@ fn real_probes_do_not_panic() {
             results.entry(id).or_default().push(det);
         }
     }
-    let report = Report::build(results, probes::cpuid::identity(), ctx.privilege);
+    let report = Report::build(
+        results,
+        probes::cpuid::identity(),
+        probes::firmware::system_info(),
+        ctx.privilege,
+    );
     // Text rendering must also not panic.
     let _ = report.render_text(intel_features::report::TextOptions {
         color: false,
