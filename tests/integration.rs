@@ -59,20 +59,33 @@ fn headline_prefers_higher_rank() {
     assert_eq!(smt.detections.len(), 2);
 }
 
-/// Detections keyed by an unknown id are dropped, not surfaced as phantom features.
+/// Detections keyed by an unknown id are rejected as programmer errors.
 #[test]
-fn unknown_ids_are_ignored() {
+fn unknown_ids_are_rejected() {
     let mut results: HashMap<&'static str, Vec<Detection>> = HashMap::new();
     results.insert(
         "not_a_real_feature",
         vec![Detection::new(Status::Present, "cpuid")],
     );
-    let report = Report::build(results, None, None, Privilege::User);
-    for cat in &report.categories {
-        for f in &cat.features {
-            assert_ne!(f.id, "not_a_real_feature");
-        }
-    }
+    assert!(Report::try_build(results, None, None, Privilege::User).is_err());
+}
+
+#[test]
+fn enabled_disabled_conflict_is_unknown_and_noted() {
+    let mut results = HashMap::new();
+    results.insert(
+        "turbo",
+        vec![
+            Detection::new(Status::Enabled, "a"),
+            Detection::new(Status::Disabled, "b"),
+        ],
+    );
+    let report = Report::try_build(results, None, None, Privilege::User).unwrap();
+    assert_eq!(find(&report, "turbo").status, Status::Unknown);
+    assert!(report
+        .notes
+        .iter()
+        .any(|note| note.contains("conflicting enabled and disabled")));
 }
 
 /// CPUID-present + kernel-flag-absent must raise a disparity note.
@@ -187,13 +200,27 @@ fn json_output_is_produced() {
     assert!(json.contains("\"privilege\": \"root\""));
 }
 
+#[test]
+fn text_output_includes_purpose_column() {
+    let mut results = HashMap::new();
+    results.insert("aes", vec![Detection::new(Status::Present, "cpuid")]);
+    let report = Report::build(results, None, None, Privilege::User);
+    let text = report.render_text(intel_features::report::TextOptions {
+        color: false,
+        verbose: false,
+        hide_absent: true,
+    });
+    assert!(text.contains("Purpose / notable instructions"));
+    assert!(text.contains("AES encryption/decryption rounds and key generation"));
+}
+
 /// The real probes are read-only; running them must never panic regardless of host.
 #[test]
 fn real_probes_do_not_panic() {
     let ctx = Context::detect();
     let mut results: HashMap<&'static str, Vec<Detection>> = HashMap::new();
     for probe in probes::all() {
-        for (id, det) in probe.detect(&ctx) {
+        for (id, det) in probe.detect(&ctx).expect("probe should degrade gracefully") {
             results.entry(id).or_default().push(det);
         }
     }

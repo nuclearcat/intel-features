@@ -1,4 +1,4 @@
-//! `intel-features` — a modular detector for Intel CPU and platform features.
+//! `intel-features` — an independent modular detector for Intel® processor and platform features.
 //!
 //! See `PLAN.md` for the full architecture and roadmap. The short version:
 //!
@@ -12,6 +12,7 @@
 //! separate detection; the reporter shows all that apply.
 
 pub mod catalog;
+pub mod cpu_db;
 pub mod model;
 pub mod probes;
 pub mod report;

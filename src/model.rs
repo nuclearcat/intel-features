@@ -108,7 +108,7 @@ impl Detection {
 pub enum Privilege {
     /// Ring 3, no special access (CPUID, most of sysfs/procfs).
     User,
-    /// Needs root (MSRs, some PCI config space, TXT public space, …).
+    /// Needs root (MSRs, TXT public space, and similar privileged interfaces).
     Root,
 }
 

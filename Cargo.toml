@@ -2,7 +2,7 @@
 name = "intel-features"
 version = "0.1.0"
 edition = "2021"
-description = "Modular detector for Intel CPU and platform features"
+description = "Modular detector for Intel® processor and platform features"
 license = "MIT OR Apache-2.0"
 
 [dependencies]

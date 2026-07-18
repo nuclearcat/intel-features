@@ -1,118 +1,139 @@
 //! Model-Specific Register probe (root).
 //!
 //! Reads (never writes) `/dev/cpu/0/msr` via `pread`. This is the first probe that
-//! needs privilege: without root — or without the `msr` module — it emits a single
-//! `msr` status detection explaining why, and every MSR-only feature is simply left
-//! "not probed" (hidden by default, shown with `--all`).
+//! needs privilege: without access it emits `Unknown` for every feature it covers.
 //!
-//! If the device node is missing (module not loaded) and we are root, the probe runs
-//! `modprobe msr` and retries — the one state change this otherwise read-only tool
-//! makes, reported in the `msr` status line ("auto-loaded msr module").
+//! Module loading is opt-in via `--load-msr-module`, requires effective root, and is
+//! attempted at most once.
 //!
 //! Individual MSRs may `#GP` if unimplemented on this part; the kernel surfaces that as
 //! `EIO`, which we treat as "feature not determinable here" and skip. We gate the most
 //! commonly-absent reads (VMX capability MSRs) behind a probe read so we don't provoke
 //! avoidable faults.
 
-use std::fs::File;
 use std::io;
-use std::os::unix::fs::FileExt;
+use std::path::Path;
 
 use crate::model::{Detection, Status};
-use crate::probes::{Context, Probe};
+use crate::probes::{
+    finding_detail, unavailable, Context, Findings, MsrAccess, Probe, ProbeResult,
+};
 
 pub struct MsrProbe;
 
 const SRC: &str = "msr";
+const FEATURES: &[&str] = &[
+    "msr",
+    "hwp",
+    "rdcl_no",
+    "eibrs",
+    "rsba",
+    "ssb_no",
+    "mds_no",
+    "if_pschange_no",
+    "tsx_ctrl",
+    "taa_no",
+    "misc_package_ctls",
+    "fb_clear",
+    "rrsba",
+    "bhi_no",
+    "pbrsb_no",
+    "gds_no",
+    "rfds_no",
+    "feature_control_locked",
+    "vmx",
+    "sgx",
+    "sgx_lc",
+    "ept",
+    "vpid",
+    "unrestricted_guest",
+    "apicv",
+    "vmcs_shadow",
+    "posted_intr",
+    "ept_ad",
+    "ept_1gb",
+    "tjmax",
+    "pkg_tdp",
+    "pkg_power_limit",
+    "smi_count",
+    "boot_guard",
+];
 
 impl Probe for MsrProbe {
     fn name(&self) -> &'static str {
         SRC
     }
 
-    fn detect(&self, ctx: &Context) -> Vec<(&'static str, Detection)> {
+    fn feature_ids(&self) -> Vec<&'static str> {
+        FEATURES.to_vec()
+    }
+
+    fn detect(&self, ctx: &Context) -> ProbeResult {
         let mut out = Vec::new();
-        let msr = match acquire(ctx) {
-            Ok((m, detail)) => {
+        match acquire(ctx) {
+            Ok(detail) => {
                 out.push(("msr", Detection::with_detail(Status::Enabled, SRC, detail)));
-                m
             }
             Err(reason) => {
-                out.push(("msr", Detection::with_detail(Status::Disabled, SRC, reason)));
-                return out;
+                return Ok(unavailable(SRC, FEATURES, reason));
             }
-        };
+        }
 
-        arch_capabilities(&msr, &mut out);
-        feature_control(&msr, &mut out);
-        vmx_capabilities(&msr, &mut out);
-        thermal_and_power(&msr, &mut out);
-        misc(&msr, &mut out);
-        out
+        hwp_enablement(ctx.msr.as_ref(), &mut out);
+        arch_capabilities(ctx.msr.as_ref(), &mut out);
+        feature_control(ctx.msr.as_ref(), &mut out);
+        vmx_capabilities(ctx.msr.as_ref(), &mut out);
+        thermal_and_power(ctx.msr.as_ref(), &mut out);
+        misc(ctx.msr.as_ref(), &mut out);
+        for &id in FEATURES {
+            if !out.iter().any(|(found, _)| *found == id) {
+                out.push(finding_detail(
+                    SRC,
+                    id,
+                    Status::Unknown,
+                    "required MSR unavailable on this CPU",
+                ));
+            }
+        }
+        Ok(out)
     }
 }
 
-/// A single CPU's MSR file. `pread` keeps reads stateless and `&self`.
-struct Msr(File);
-
-impl Msr {
-    fn open(cpu: u32) -> io::Result<Msr> {
-        File::open(format!("/dev/cpu/{cpu}/msr")).map(Msr)
-    }
-
-    /// Read one 64-bit MSR. `Err(EIO)` means the register `#GP`'d (not implemented).
-    fn read(&self, msr: u32) -> io::Result<u64> {
-        let mut buf = [0u8; 8];
-        self.0.read_exact_at(&mut buf, msr as u64)?;
-        Ok(u64::from_le_bytes(buf))
-    }
-}
-
-/// Open cpu0's MSR file, auto-loading the `msr` module first if it is simply not loaded
-/// and we are root. Returns the handle plus a human note for the `msr` status line, or a
-/// reason string on failure.
-fn acquire(ctx: &Context) -> Result<(Msr, String), String> {
-    match Msr::open(0) {
-        Ok(m) => return Ok((m, "/dev/cpu/0/msr readable".to_string())),
+/// Check cpu0's MSR file and optionally load the module under the explicit policy.
+fn acquire(ctx: &Context) -> Result<String, String> {
+    let path = Path::new("/dev/cpu/0/msr");
+    match ctx.reader.open_device(path, false) {
+        Ok(()) => return Ok("/dev/cpu/0/msr readable".to_string()),
         Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
             return Err("requires root".to_string());
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             // Device node missing → msr module not loaded. Only root can fix it.
-            if !ctx.is_root() {
+            if !ctx.options.load_msr_module {
                 return Err(
-                    "no /dev/cpu/0/msr (re-run as root to auto-load msr module)".to_string()
+                    "no /dev/cpu/0/msr (use --load-msr-module to opt in to modprobe)".to_string(),
                 );
+            }
+            if !ctx.is_root() {
+                return Err("no /dev/cpu/0/msr; --load-msr-module requires root".to_string());
             }
         }
         Err(e) => return Err(format!("open failed: {:?}", e.kind())),
     }
 
     // Root, module not loaded: try to load it, then reopen.
-    if let Err(reason) = load_msr_module() {
+    if !ctx.try_mark_module_load() {
+        return Err("msr module load was already attempted".to_string());
+    }
+    if let Err(reason) = ctx.msr.load_module() {
         return Err(format!(
             "msr module not loaded and modprobe failed: {reason}"
         ));
     }
-    match Msr::open(0) {
-        Ok(m) => Ok((m, "readable (auto-loaded msr module)".to_string())),
+    match ctx.reader.open_device(path, false) {
+        Ok(()) => Ok("readable (loaded msr module by explicit request)".to_string()),
         Err(e) => Err(format!("msr module loaded but open failed: {:?}", e.kind())),
     }
-}
-
-/// Run `modprobe msr`. Tries `PATH` then the usual sbin locations, since a root shell's
-/// `PATH` does not always include sbin.
-fn load_msr_module() -> Result<(), String> {
-    let mut last = "modprobe not found".to_string();
-    for prog in ["modprobe", "/sbin/modprobe", "/usr/sbin/modprobe"] {
-        match std::process::Command::new(prog).arg("msr").status() {
-            Ok(s) if s.success() => return Ok(()),
-            Ok(s) => last = format!("`{prog} msr` exited {s}"),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-            Err(e) => last = format!("`{prog}`: {e}"),
-        }
-    }
-    Err(last)
 }
 
 fn bit(v: u64, n: u32) -> bool {
@@ -129,8 +150,33 @@ fn present(cond: bool) -> Status {
 
 // ---- IA32_ARCH_CAPABILITIES (0x10A) -------------------------------------------------
 
-fn arch_capabilities(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
-    let Ok(v) = msr.read(0x10A) else { return };
+fn read(msr: &dyn MsrAccess, register: u32) -> io::Result<u64> {
+    msr.read(0, register)
+}
+
+fn hwp_enablement(msr: &dyn MsrAccess, out: &mut Findings) {
+    match read(msr, 0x770) {
+        Ok(value) => out.push(finding_detail(
+            SRC,
+            "hwp",
+            if bit(value, 0) {
+                Status::Enabled
+            } else {
+                Status::Disabled
+            },
+            format!("IA32_PM_ENABLE={value:#x}"),
+        )),
+        Err(error) => out.push(finding_detail(
+            SRC,
+            "hwp",
+            Status::Unknown,
+            format!("IA32_PM_ENABLE unreadable: {error}"),
+        )),
+    }
+}
+
+fn arch_capabilities(msr: &dyn MsrAccess, out: &mut Findings) {
+    let Ok(v) = read(msr, 0x10A) else { return };
     // (id, bit) — bit positions per Intel SDM / arch/x86/include/asm/msr-index.h.
     let bits = [
         ("rdcl_no", 0),
@@ -157,8 +203,8 @@ fn arch_capabilities(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
 
 // ---- IA32_FEATURE_CONTROL (0x3A) ----------------------------------------------------
 
-fn feature_control(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
-    let Ok(v) = msr.read(0x3A) else { return };
+fn feature_control(msr: &dyn MsrAccess, out: &mut Findings) {
+    let Ok(v) = read(msr, 0x3A) else { return };
     let locked = bit(v, 0);
     let vmx_out = bit(v, 2);
     let vmx_in = bit(v, 1);
@@ -211,16 +257,16 @@ fn feature_control(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
 
 // ---- VMX capability MSRs (0x481 / 0x48B / 0x48C) ------------------------------------
 
-fn vmx_capabilities(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
+fn vmx_capabilities(msr: &dyn MsrAccess, out: &mut Findings) {
     // IA32_VMX_BASIC (0x480) only reads when VMX is supported; use it as the gate so we
     // don't #GP on non-VMX parts.
-    if msr.read(0x480).is_err() {
+    if read(msr, 0x480).is_err() {
         return;
     }
 
     // Secondary processor-based controls (0x48B): a control is *available* when its bit
     // is set in the allowed-1 (high) dword.
-    if let Ok(v) = msr.read(0x48B) {
+    if let Ok(v) = read(msr, 0x48B) {
         let avail = |b: u32| present(bit(v, 32 + b));
         out.push((
             "ept",
@@ -245,7 +291,7 @@ fn vmx_capabilities(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
     }
 
     // Pin-based controls (0x481): posted interrupts = allowed-1 bit 7.
-    if let Ok(v) = msr.read(0x481) {
+    if let Ok(v) = read(msr, 0x481) {
         out.push((
             "posted_intr",
             Detection::with_detail(present(bit(v, 32 + 7)), SRC, "VMX_PINBASED_CTLS[7]"),
@@ -253,7 +299,7 @@ fn vmx_capabilities(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
     }
 
     // EPT/VPID capabilities (0x48C).
-    if let Ok(v) = msr.read(0x48C) {
+    if let Ok(v) = read(msr, 0x48C) {
         out.push((
             "ept_ad",
             Detection::with_detail(present(bit(v, 21)), SRC, "VMX_EPT_VPID_CAP[21]"),
@@ -267,8 +313,8 @@ fn vmx_capabilities(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
 
 // ---- Thermal & RAPL (0x1A2 / 0x606 / 0x610 / 0x614) --------------------------------
 
-fn thermal_and_power(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
-    if let Ok(v) = msr.read(0x1A2) {
+fn thermal_and_power(msr: &dyn MsrAccess, out: &mut Findings) {
+    if let Ok(v) = read(msr, 0x1A2) {
         let tjmax = (v >> 16) & 0xff;
         out.push((
             "tjmax",
@@ -277,16 +323,16 @@ fn thermal_and_power(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
     }
 
     // RAPL power unit (0x606): power unit = 1 / 2^(bits[3:0]) watts.
-    if let Ok(units) = msr.read(0x606) {
+    if let Ok(units) = read(msr, 0x606) {
         let power_w = 1.0 / (1u64 << (units & 0xf)) as f64;
-        if let Ok(v) = msr.read(0x614) {
+        if let Ok(v) = read(msr, 0x614) {
             let tdp = (v & 0x7fff) as f64 * power_w;
             out.push((
                 "pkg_tdp",
                 Detection::with_detail(Status::Present, SRC, format!("{tdp:.0} W")),
             ));
         }
-        if let Ok(v) = msr.read(0x610) {
+        if let Ok(v) = read(msr, 0x610) {
             let pl1 = (v & 0x7fff) as f64 * power_w;
             let pl2 = ((v >> 32) & 0x7fff) as f64 * power_w;
             out.push((
@@ -303,15 +349,15 @@ fn thermal_and_power(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
 
 // ---- Misc (0x34 SMI count, 0x13A Boot Guard) ---------------------------------------
 
-fn misc(msr: &Msr, out: &mut Vec<(&'static str, Detection)>) {
-    if let Ok(v) = msr.read(0x34) {
+fn misc(msr: &dyn MsrAccess, out: &mut Findings) {
+    if let Ok(v) = read(msr, 0x34) {
         let count = v & 0xffff_ffff;
         out.push((
             "smi_count",
             Detection::with_detail(Status::Present, SRC, format!("{count} SMIs")),
         ));
     }
-    if let Ok(v) = msr.read(0x13A) {
+    if let Ok(v) = read(msr, 0x13A) {
         out.push((
             "boot_guard",
             Detection::with_detail(Status::Present, SRC, format!("SACM_INFO = {v:#x}")),

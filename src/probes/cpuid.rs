@@ -9,8 +9,11 @@
 //! with an "asymmetric" note, since software cannot rely on it uniformly. The scan
 //! runs once and is memoized; both [`identity`] and the [`Probe`] impl read from it.
 
+use crate::cpu_db::{self, CpuModelInfo};
 use crate::model::{Detection, Status};
-use crate::probes::{Context, Probe};
+use crate::probes::{unavailable, Context, Probe, ProbeResult};
+use std::collections::HashSet;
+use std::path::Path;
 
 /// CPU identity + topology summary, shown as the report banner.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -20,6 +23,9 @@ pub struct Identity {
     pub family: u32,
     pub model: u32,
     pub stepping: u32,
+    /// Codename, marketing generation, and segment from the family/model database.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_info: Option<CpuModelInfo>,
     pub logical_cpus: usize,
     pub hybrid: bool,
     pub p_cores: usize,
@@ -31,23 +37,160 @@ pub struct Identity {
 
 pub struct CpuidProbe;
 
+const FEATURES: &[&str] = &[
+    "adx",
+    "aes",
+    "amx_bf16",
+    "amx_int8",
+    "amx_tile",
+    "arat",
+    "arch_lbr",
+    "arch_perfmon",
+    "avx",
+    "avx10",
+    "avx2",
+    "avx512bf16",
+    "avx512bitalg",
+    "avx512bw",
+    "avx512cd",
+    "avx512dq",
+    "avx512f",
+    "avx512fp16",
+    "avx512ifma",
+    "avx512vbmi",
+    "avx512vbmi2",
+    "avx512vl",
+    "avx512vnni",
+    "avx512vp2intersect",
+    "avx512vpopcntdq",
+    "avx_ifma",
+    "avx_ne_convert",
+    "avx_vnni",
+    "avx_vnni_int16",
+    "avx_vnni_int8",
+    "bmi1",
+    "bmi2",
+    "bts",
+    "cat_l2",
+    "cat_l3",
+    "cdp_l3",
+    "cet_ibt",
+    "cet_ss",
+    "cet_sss",
+    "clflushopt",
+    "clwb",
+    "cmpxchg16b",
+    "cmt",
+    "dts",
+    "eist",
+    "epb",
+    "f16c",
+    "fma",
+    "fsgsbase",
+    "fsrm",
+    "gfni",
+    "hdc",
+    "hle",
+    "hreset",
+    "htt",
+    "hwp",
+    "hwp_activity_window",
+    "hwp_epp",
+    "hwp_notification",
+    "hwp_package",
+    "hybrid",
+    "hypervisor",
+    "intel_pt",
+    "lam",
+    "lzcnt",
+    "mba",
+    "mbm_local",
+    "mbm_total",
+    "monitor",
+    "movbe",
+    "movdir64b",
+    "movdiri",
+    "mpx",
+    "nx",
+    "ospke",
+    "pclmulqdq",
+    "pdcm",
+    "pku",
+    "pln",
+    "popcnt",
+    "prefetchi",
+    "ptm",
+    "ptwrite",
+    "rdpid",
+    "rdrand",
+    "rdseed",
+    "rdt_a",
+    "rdt_m",
+    "rtm",
+    "serialize",
+    "sgx",
+    "sgx_lc",
+    "sha",
+    "smap",
+    "smep",
+    "smx",
+    "sse",
+    "sse2",
+    "sse3",
+    "sse4_1",
+    "sse4_2",
+    "ssse3",
+    "tm2",
+    "tme",
+    "tsc_deadline",
+    "turbo",
+    "turbo3",
+    "umip",
+    "vaes",
+    "vmx",
+    "vpclmulqdq",
+    "waitpkg",
+    "x2apic",
+    "xsave",
+    "xsavec",
+    "xsaveopt",
+    "xsaves",
+];
+
 impl Probe for CpuidProbe {
     fn name(&self) -> &'static str {
         "cpuid"
     }
 
-    fn detect(&self, _ctx: &Context) -> Vec<(&'static str, Detection)> {
-        scan().detections.clone()
+    fn feature_ids(&self) -> Vec<&'static str> {
+        FEATURES.to_vec()
+    }
+
+    fn detect(&self, ctx: &Context) -> ProbeResult {
+        let scan = run_scan(ctx);
+        if scan.detections.is_empty() {
+            Ok(unavailable(
+                self.name(),
+                FEATURES,
+                "no eligible logical CPU could be scanned",
+            ))
+        } else {
+            Ok(scan.detections)
+        }
     }
 }
 
 /// CPU identity banner, if determinable on this architecture.
 pub fn identity() -> Option<Identity> {
-    scan().identity.clone()
+    identity_with(&Context::detect())
+}
+
+pub fn identity_with(ctx: &Context) -> Option<Identity> {
+    run_scan(ctx).identity
 }
 
 /// Per-architecture core type as reported by CPUID leaf 0x1A.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum CoreType {
     Performance,
     Efficiency,
@@ -70,28 +213,24 @@ struct Scan {
     detections: Vec<(&'static str, Detection)>,
 }
 
-/// Memoized scan — CPUID does not change during a run.
-fn scan() -> &'static Scan {
-    use std::sync::OnceLock;
-    static SCAN: OnceLock<Scan> = OnceLock::new();
-    SCAN.get_or_init(run_scan)
-}
-
 // =====================================================================================
 // x86-64 implementation
 // =====================================================================================
 
 #[cfg(target_arch = "x86_64")]
-fn run_scan() -> Scan {
-    let cpus = online_cpus();
-    let cores: Vec<CoreScan> = cpus.iter().filter_map(|&c| scan_pinned(c)).collect();
+fn run_scan(ctx: &Context) -> Scan {
+    let cpus = eligible_cpus(ctx);
+    let cores: Vec<CoreScan> = cpus
+        .iter()
+        .filter_map(|&cpu| scan_pinned(cpu, ctx.clone()))
+        .collect();
     if cores.is_empty() {
         return Scan {
             identity: None,
             detections: Vec::new(),
         };
     }
-    let identity = build_identity(&cores);
+    let identity = build_identity(&cores, ctx);
     let detections = aggregate(&cores);
     Scan {
         identity: Some(identity),
@@ -101,10 +240,11 @@ fn run_scan() -> Scan {
 
 /// One core's findings: its type and the full feature boolean vector (with leaf tags).
 struct CoreScan {
+    logical_cpu: u32,
     core_type: CoreType,
+    physical_key: Option<u64>,
     feats: Vec<(&'static str, bool, &'static str)>,
-    // Identity fields, filled from the boot core only.
-    ident: Option<CoreIdent>,
+    ident: CoreIdent,
 }
 
 struct CoreIdent {
@@ -133,14 +273,14 @@ mod raw {
 /// Pin a fresh thread to `cpu`, scan there, return the result. Returns `None` if the
 /// core could not be pinned (e.g. it went offline between enumeration and scan).
 #[cfg(target_arch = "x86_64")]
-fn scan_pinned(cpu: u32) -> Option<CoreScan> {
+fn scan_pinned(cpu: u32, ctx: Context) -> Option<CoreScan> {
     std::thread::Builder::new()
         .name(format!("cpuid-scan-{cpu}"))
         .spawn(move || {
             if !pin_to(cpu) {
                 return None;
             }
-            Some(scan_core(cpu == 0))
+            Some(scan_core(cpu, &ctx))
         })
         .ok()?
         .join()
@@ -150,19 +290,26 @@ fn scan_pinned(cpu: u32) -> Option<CoreScan> {
 /// Bind the current thread to a single logical CPU.
 #[cfg(target_arch = "x86_64")]
 fn pin_to(cpu: u32) -> bool {
-    // SAFETY: zeroed cpu_set_t is valid; we pass its true size to the kernel.
+    let word_bits = usize::BITS as usize;
+    let words = cpu as usize / word_bits + 1;
+    let mut mask = vec![0usize; words];
+    mask[cpu as usize / word_bits] |= 1usize << (cpu as usize % word_bits);
+    // SAFETY: the pointer addresses `words * size_of::<usize>()` initialized bytes.
     unsafe {
-        let mut set: libc::cpu_set_t = std::mem::zeroed();
-        libc::CPU_SET(cpu as usize, &mut set);
-        libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &set) == 0
+        libc::sched_setaffinity(
+            0,
+            std::mem::size_of_val(mask.as_slice()),
+            mask.as_ptr().cast(),
+        ) == 0
     }
 }
 
 /// Decode every catalog-relevant feature on the current core.
 #[cfg(target_arch = "x86_64")]
-fn scan_core(is_boot: bool) -> CoreScan {
+fn scan_core(logical_cpu: u32, ctx: &Context) -> CoreScan {
     use raw::{bit, cpuid};
     let id = raw_cpuid::CpuId::new();
+    let max_basic = cpuid(0, 0).0;
 
     let mut feats: Vec<(&'static str, bool, &'static str)> = Vec::new();
     let mut push =
@@ -406,7 +553,7 @@ fn scan_core(is_boot: bool) -> CoreScan {
     push("cdp_l3", cdp.unwrap_or(false), "leaf 0x10");
 
     // ---- Core type (leaf 0x1A) ------------------------------------------------------
-    let core_type = if id.get_extended_feature_info().map(|_| ()).is_some() {
+    let core_type = if max_basic >= 0x1a {
         // CPUID.1AH:EAX[31:24] core type: 0x40 = Intel Core (P), 0x20 = Intel Atom (E).
         match cpuid(0x1A, 0).0 >> 24 {
             0x40 => CoreType::Performance,
@@ -417,7 +564,7 @@ fn scan_core(is_boot: bool) -> CoreScan {
         CoreType::Other
     };
 
-    let ident = if is_boot {
+    let ident = {
         let vendor = id
             .get_vendor_info()
             .map(|v| v.as_str().to_string())
@@ -436,19 +583,19 @@ fn scan_core(is_boot: bool) -> CoreScan {
                 )
             })
             .unwrap_or((0, 0, 0));
-        Some(CoreIdent {
+        CoreIdent {
             vendor,
             brand,
             family,
             model,
             stepping,
-        })
-    } else {
-        None
+        }
     };
 
     CoreScan {
+        logical_cpu,
         core_type,
+        physical_key: physical_core_key(logical_cpu, max_basic, ctx),
         feats,
         ident,
     }
@@ -504,22 +651,15 @@ fn summarize_types(types: &[CoreType]) -> String {
 }
 
 #[cfg(target_arch = "x86_64")]
-fn build_identity(cores: &[CoreScan]) -> Identity {
-    let ci = cores.iter().find_map(|c| c.ident.as_ref());
-    let p_cores = cores
-        .iter()
-        .filter(|c| c.core_type == CoreType::Performance)
-        .count();
-    let e_cores = cores
-        .iter()
-        .filter(|c| c.core_type == CoreType::Efficiency)
-        .count();
+fn build_identity(cores: &[CoreScan], ctx: &Context) -> Identity {
+    let ci = cores.first().map(|c| &c.ident);
+    let (p_cores, e_cores) = physical_counts(cores);
     // Hybrid if the leaf-7 bit was set (recorded as a feature) or core types differ.
     let hybrid = cores
         .iter()
         .any(|c| c.feats.iter().any(|(id, v, _)| *id == "hybrid" && *v))
         || (p_cores > 0 && e_cores > 0);
-    let microcode = read_microcode();
+    let microcode = read_microcode(ctx);
     match ci {
         Some(ci) => Identity {
             vendor: ci.vendor.clone(),
@@ -527,34 +667,49 @@ fn build_identity(cores: &[CoreScan]) -> Identity {
             family: ci.family,
             model: ci.model,
             stepping: ci.stepping,
+            model_info: cpu_db::lookup(&ci.vendor, ci.family, ci.model),
             logical_cpus: cores.len(),
             hybrid,
             p_cores,
             e_cores,
             microcode,
         },
-        None => Identity {
-            vendor: String::new(),
-            brand: String::new(),
-            family: 0,
-            model: 0,
-            stepping: 0,
-            logical_cpus: cores.len(),
-            hybrid,
-            p_cores,
-            e_cores,
-            microcode,
-        },
+        None => unreachable!("identity requires at least one successful scan"),
     }
+}
+
+#[cfg(target_arch = "x86_64")]
+fn physical_counts(cores: &[CoreScan]) -> (usize, usize) {
+    let physical: HashSet<(CoreType, u64)> = cores
+        .iter()
+        .map(|core| {
+            let key = core
+                .physical_key
+                .unwrap_or(0x8000_0000_0000_0000 | u64::from(core.logical_cpu));
+            (core.core_type, key)
+        })
+        .collect();
+    let p_cores = physical
+        .iter()
+        .filter(|(kind, _)| *kind == CoreType::Performance)
+        .count();
+    let e_cores = physical
+        .iter()
+        .filter(|(kind, _)| *kind == CoreType::Efficiency)
+        .count();
+    (p_cores, e_cores)
 }
 
 /// Loaded microcode revision from sysfs (falls back to `/proc/cpuinfo`).
 #[cfg(target_arch = "x86_64")]
-fn read_microcode() -> Option<String> {
-    if let Ok(v) = std::fs::read_to_string("/sys/devices/system/cpu/cpu0/microcode/version") {
+fn read_microcode(ctx: &Context) -> Option<String> {
+    if let Ok(v) = ctx
+        .reader
+        .read_to_string(Path::new("/sys/devices/system/cpu/cpu0/microcode/version"))
+    {
         return Some(v.trim().to_string());
     }
-    let info = std::fs::read_to_string("/proc/cpuinfo").ok()?;
+    let info = ctx.reader.read_to_string(Path::new("/proc/cpuinfo")).ok()?;
     for line in info.lines() {
         if let Some(rest) = line.strip_prefix("microcode") {
             if let Some((_, v)) = rest.split_once(':') {
@@ -565,29 +720,148 @@ fn read_microcode() -> Option<String> {
     None
 }
 
-/// Parse `/sys/devices/system/cpu/online` (e.g. `"0-3,8-11"`). Falls back to `[0]`.
+fn physical_core_key(cpu: u32, max_basic: u32, ctx: &Context) -> Option<u64> {
+    let leaf = if max_basic >= 0x1f {
+        Some(0x1f)
+    } else if max_basic >= 0x0b {
+        Some(0x0b)
+    } else {
+        None
+    };
+    if let Some(leaf) = leaf {
+        let mut smt_shift = None;
+        let mut x2apic = None;
+        for subleaf in 0..32 {
+            let (eax, ebx, ecx, edx) = raw::cpuid(leaf, subleaf);
+            if ebx == 0 {
+                break;
+            }
+            x2apic = Some(edx);
+            if (ecx >> 8) & 0xff == 1 {
+                smt_shift = Some(eax & 0x1f);
+            }
+        }
+        if let (Some(id), Some(shift)) = (x2apic, smt_shift) {
+            return Some(u64::from(id >> shift));
+        }
+    }
+    let base = format!("/sys/devices/system/cpu/cpu{cpu}/topology");
+    let package = ctx
+        .reader
+        .read_to_string(Path::new(&format!("{base}/physical_package_id")))
+        .ok()?
+        .trim()
+        .parse::<u32>()
+        .ok()?;
+    let core = ctx
+        .reader
+        .read_to_string(Path::new(&format!("{base}/core_id")))
+        .ok()?
+        .trim()
+        .parse::<u32>()
+        .ok()?;
+    Some((u64::from(package) << 32) | u64::from(core))
+}
+
+/// Parse Linux CPU-list syntax such as `0-3,8-11`.
 #[cfg(target_arch = "x86_64")]
-fn online_cpus() -> Vec<u32> {
-    let text = std::fs::read_to_string("/sys/devices/system/cpu/online").unwrap_or_default();
+fn parse_cpu_list(text: &str) -> Option<Vec<u32>> {
     let mut cpus = Vec::new();
     for part in text.trim().split(',').filter(|s| !s.is_empty()) {
         match part.split_once('-') {
             Some((a, b)) => {
-                if let (Ok(a), Ok(b)) = (a.parse::<u32>(), b.parse::<u32>()) {
-                    cpus.extend(a..=b);
+                let (a, b) = (a.parse::<u32>().ok()?, b.parse::<u32>().ok()?);
+                if a > b {
+                    return None;
                 }
+                cpus.extend(a..=b);
             }
             None => {
-                if let Ok(n) = part.parse::<u32>() {
-                    cpus.push(n);
-                }
+                cpus.push(part.parse::<u32>().ok()?);
             }
         }
     }
-    if cpus.is_empty() {
-        cpus.push(0);
+    (!cpus.is_empty()).then_some(cpus)
+}
+
+#[cfg(target_arch = "x86_64")]
+fn eligible_cpus(ctx: &Context) -> Vec<u32> {
+    let allowed_text = ctx
+        .reader
+        .read_to_string(Path::new("/proc/self/status"))
+        .ok()
+        .and_then(|text| {
+            text.lines().find_map(|line| {
+                line.strip_prefix("Cpus_allowed_list:")
+                    .map(str::trim)
+                    .map(str::to_string)
+            })
+        });
+    let online_text = ctx
+        .reader
+        .read_to_string(Path::new("/sys/devices/system/cpu/online"))
+        .ok();
+    let Some(allowed) = allowed_text.as_deref().and_then(parse_cpu_list) else {
+        return Vec::new();
+    };
+    let Some(online) = online_text.as_deref().and_then(parse_cpu_list) else {
+        return Vec::new();
+    };
+    let online: HashSet<_> = online.into_iter().collect();
+    allowed
+        .into_iter()
+        .filter(|cpu| online.contains(cpu))
+        .collect()
+}
+
+#[cfg(all(test, target_arch = "x86_64"))]
+mod tests {
+    use super::*;
+
+    fn core(cpu: u32, kind: CoreType, key: Option<u64>) -> CoreScan {
+        CoreScan {
+            logical_cpu: cpu,
+            core_type: kind,
+            physical_key: key,
+            feats: Vec::new(),
+            ident: CoreIdent {
+                vendor: String::new(),
+                brand: String::new(),
+                family: 0,
+                model: 0,
+                stepping: 0,
+            },
+        }
     }
-    cpus
+
+    #[test]
+    fn cpu_list_supports_sparse_and_high_ids() {
+        assert_eq!(
+            parse_cpu_list("2-3,1024,4096"),
+            Some(vec![2, 3, 1024, 4096])
+        );
+        assert_eq!(parse_cpu_list("4-2"), None);
+        assert_eq!(parse_cpu_list("garbage"), None);
+    }
+
+    #[test]
+    fn smt_siblings_are_counted_as_one_physical_core() {
+        let cores = vec![
+            core(2, CoreType::Performance, Some(10)),
+            core(6, CoreType::Performance, Some(10)),
+            core(9, CoreType::Efficiency, Some(11)),
+        ];
+        assert_eq!(physical_counts(&cores), (1, 1));
+    }
+
+    #[test]
+    fn missing_topology_key_does_not_merge_logical_cpus() {
+        let cores = vec![
+            core(1024, CoreType::Performance, None),
+            core(4096, CoreType::Performance, None),
+        ];
+        assert_eq!(physical_counts(&cores), (2, 0));
+    }
 }
 
 // =====================================================================================
@@ -595,7 +869,7 @@ fn online_cpus() -> Vec<u32> {
 // =====================================================================================
 
 #[cfg(not(target_arch = "x86_64"))]
-fn run_scan() -> Scan {
+fn run_scan(_ctx: &Context) -> Scan {
     Scan {
         identity: None,
         detections: Vec::new(),

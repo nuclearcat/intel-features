@@ -1,4 +1,7 @@
-# IntelFeatures — Intel CPU & Platform Feature Detection Tool
+# IntelFeatures — Intel® Processor & Platform Feature Detection Tool
+
+This independent project is not affiliated with or endorsed by Intel Corporation. See
+[`TRADEMARKS.md`](TRADEMARKS.md) for trademark attribution and usage notes.
 
 A modular CLI tool that detects the presence (and where possible, the enabled/disabled
 state) of Intel processor and motherboard/platform features.
@@ -291,13 +294,12 @@ features need root/msr.
   turbo+HWP+RAPL+intel_idle enabled, microcode 0x11b. 15 tests, fmt+clippy clean.
 
 ### M3 — MSR probe (root)  ✅ DONE
-- [x] Read-only MSR layer: `pread` on `/dev/cpu/0/msr`, never writes. Without root or
-      the msr module it emits one `msr: disabled` status line and leaves MSR-only
-      features "not probed" (hidden by default). A specific MSR that #GP's (EIO) is
+- [x] Read-only MSR layer: `pread` on `/dev/cpu/0/msr`, never writes. Without access or
+      the msr module it emits explicit `unknown` findings for covered MSR features. A
+      specific MSR that #GP's (EIO) is
       skipped, not fatal. VMX-cap reads gated behind IA32_VMX_BASIC to avoid #GP spam
-      (verified: 0 "unchecked MSR" dmesg lines). If the device node is missing and we are
-      root, the probe runs `modprobe msr` and retries (the one state change the tool
-      makes), reported as "auto-loaded msr module" in the status line.
+      (verified: 0 "unchecked MSR" dmesg lines). Module loading is read-only-by-default:
+      `modprobe msr` is attempted once only with `--load-msr-module` and effective root.
 - [x] IA32_ARCH_CAPABILITIES (0x10A) → new "Architectural Capabilities" category
       (RDCL_NO, eIBRS, MDS_NO, TAA_NO, BHI_NO, PBRSB_NO, GDS_NO, RFDS_NO, …) — these
       cross-validate the vulnerabilities section. IA32_FEATURE_CONTROL (0x3A) →
@@ -347,7 +349,8 @@ features need root/msr.
 - [ ] MEI protocol client (ME version, AMT state)
 - [ ] TXT public space read, Boot Guard full decode
 - [ ] Server extras: IPMI, CXL, SST mailbox
-- [ ] Codename/generation database + "expected features for this SKU" diffing
+- [x] Codename/generation database (CPUID family/model; conservative ranges for shared IDs)
+- [ ] "Expected features for this SKU" diffing
 
 ### M7 — Polish
 - [ ] `--explain <feature>` (what it is, why it matters, how it was detected)

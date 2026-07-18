@@ -4,6 +4,7 @@
 //! catalog into a [`Report`], and renders it as grouped colorized text or JSON.
 
 use std::collections::HashMap;
+use std::fmt;
 
 use serde::Serialize;
 
@@ -63,22 +64,45 @@ pub struct TextOptions {
 impl Report {
     /// Fold probe results against the catalog.
     pub fn build(
-        mut results: HashMap<&'static str, Vec<Detection>>,
+        results: HashMap<&'static str, Vec<Detection>>,
         identity: Option<Identity>,
         system: Option<SystemInfo>,
         privilege: Privilege,
     ) -> Report {
+        Self::try_build(results, identity, system, privilege)
+            .expect("probe emitted an unknown feature id")
+    }
+
+    pub fn try_build(
+        mut results: HashMap<&'static str, Vec<Detection>>,
+        identity: Option<Identity>,
+        system: Option<SystemInfo>,
+        privilege: Privilege,
+    ) -> Result<Report, ReportError> {
+        if let Some(id) = results.keys().find(|id| catalog::find(id).is_none()) {
+            return Err(ReportError::UnknownFeatureId(id));
+        }
         let mut categories = Vec::new();
         let mut notes = Vec::new();
         for &cat in Category::ORDER {
             let mut features = Vec::new();
             for def in catalog::FEATURES.iter().filter(|f| f.category == cat) {
                 let detections = results.remove(def.id).unwrap_or_default();
-                let status = detections
-                    .iter()
-                    .map(|d| d.status)
-                    .max_by_key(|s| s.rank())
-                    .unwrap_or(Status::Unknown);
+                let enabled = detections.iter().any(|d| d.status == Status::Enabled);
+                let disabled = detections.iter().any(|d| d.status == Status::Disabled);
+                let status = if enabled && disabled {
+                    notes.push(format!(
+                        "{}: conflicting enabled and disabled detections; headline set to unknown",
+                        def.name
+                    ));
+                    Status::Unknown
+                } else {
+                    detections
+                        .iter()
+                        .map(|d| d.status)
+                        .max_by_key(|s| s.rank())
+                        .unwrap_or(Status::Unknown)
+                };
                 if let Some(note) = disparity_note(def.name, &detections) {
                     notes.push(note);
                 }
@@ -98,7 +122,7 @@ impl Report {
                 features,
             });
         }
-        Report {
+        Ok(Report {
             tool: "intel-features",
             version: env!("CARGO_PKG_VERSION"),
             privilege,
@@ -106,7 +130,7 @@ impl Report {
             system,
             categories,
             notes,
-        }
+        })
     }
 
     pub fn to_json(&self) -> String {
@@ -135,13 +159,17 @@ impl Report {
             s.push('\n');
             s.push_str(&bold(cat.title, opts.color));
             s.push('\n');
+            s.push_str(&dim(
+                "    Feature                 Status    Evidence                 Purpose / notable instructions\n",
+                opts.color,
+            ));
             for f in visible {
                 render_feature(&mut s, f, opts);
             }
         }
         if !self.notes.is_empty() {
             s.push('\n');
-            s.push_str(&bold("Cross-check (CPUID vs kernel)", opts.color));
+            s.push_str(&bold("Notes", opts.color));
             s.push('\n');
             for note in &self.notes {
                 s.push_str(&format!("  {} {}\n", colorize("!", "33", opts.color), note));
@@ -168,6 +196,12 @@ impl Report {
                     "  Vendor:    {}   family {:#x} model {:#x} stepping {}\n",
                     id.vendor, id.family, id.model, id.stepping
                 ));
+                if let Some(model) = id.model_info {
+                    s.push_str(&format!(
+                        "  Generation: {} — {} ({})\n",
+                        model.codename, model.generation, model.segment
+                    ));
+                }
                 let topo = if id.hybrid {
                     format!(
                         "{} logical, hybrid: {} P-core(s) + {} E-core(s)",
@@ -201,12 +235,29 @@ impl Report {
             }
         }
         let priv_note = match self.privilege {
-            Privilege::Root => "root (all probes available)",
-            Privilege::User => "user (MSR/PCI-config probes will report Unknown)",
+            Privilege::Root => {
+                "root (availability still depends on host interfaces and namespaces)"
+            }
+            Privilege::User => "user (MSR access may report Unknown)",
         };
         s.push_str(&format!("  Privilege: {priv_note}\n"));
     }
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReportError {
+    UnknownFeatureId(&'static str),
+}
+
+impl fmt::Display for ReportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownFeatureId(id) => write!(f, "unknown feature id {id:?}"),
+        }
+    }
+}
+
+impl std::error::Error for ReportError {}
 
 fn render_feature(s: &mut String, f: &FeatureReport, opts: TextOptions) {
     let glyph = colorize(f.status.glyph(), f.status.color(), opts.color);
@@ -232,12 +283,14 @@ fn render_feature(s: &mut String, f: &FeatureReport, opts: TextOptions) {
         f.status.color(),
         opts.color,
     );
+    let evidence = format!("{trailing:<24}");
     s.push_str(&format!(
-        "  {} {:<22} {} {}\n",
+        "  {} {:<22} {} {} {}\n",
         glyph,
         f.name,
         label,
-        dim(&trailing, opts.color)
+        dim(&evidence, opts.color),
+        f.description,
     ));
     if opts.verbose {
         for d in &f.detections {

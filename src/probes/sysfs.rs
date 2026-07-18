@@ -1,253 +1,330 @@
-//! Linux sysfs / procfs / devnode probe.
-//!
-//! Where CPUID reports *silicon capability*, this probe reports *runtime state* the
-//! kernel exposes without root: whether SMT is actually on, whether KVM is usable,
-//! whether a TPM device is present. For SMT in particular this produces a second
-//! detection on the same feature as CPUID — demonstrating the Present-vs-Enabled
-//! distinction that is central to the tool's model.
+//! Linux sysfs, procfs, and device-node runtime-state probe.
 
+use std::io;
 use std::path::Path;
 
-use crate::model::{Detection, Status};
-use crate::probes::{Context, Probe};
+use crate::model::Status;
+use crate::probes::{finding_detail, Context, Findings, Probe, ProbeResult};
+
+const SRC: &str = "linux-sysfs";
+const FEATURES: &[&str] = &[
+    "smt",
+    "kvm",
+    "tpm",
+    "intel_pstate",
+    "turbo",
+    "intel_idle",
+    "rapl",
+    "resctrl",
+    "ipmi",
+    "bluetooth",
+    "sgx",
+];
 
 pub struct SysfsProbe;
 
 impl Probe for SysfsProbe {
     fn name(&self) -> &'static str {
-        "linux-sysfs"
+        SRC
+    }
+    fn feature_ids(&self) -> Vec<&'static str> {
+        FEATURES.to_vec()
     }
 
-    fn detect(&self, _ctx: &Context) -> Vec<(&'static str, Detection)> {
+    fn detect(&self, ctx: &Context) -> ProbeResult {
         let mut out = Vec::new();
-        detect_smt(&mut out);
-        detect_kvm(&mut out);
-        detect_tpm(&mut out);
-        detect_pstate(&mut out);
-        detect_idle(&mut out);
-        detect_rapl(&mut out);
-        detect_resctrl(&mut out);
-        detect_nodes(&mut out);
-        out
+        detect_smt(ctx, &mut out);
+        detect_kvm(ctx, &mut out);
+        detect_tpm(ctx, &mut out);
+        detect_pstate(ctx, &mut out);
+        detect_idle(ctx, &mut out);
+        detect_rapl(ctx, &mut out);
+        detect_resctrl(ctx, &mut out);
+        detect_nodes(ctx, &mut out);
+        Ok(out)
     }
 }
 
-/// Device-node / class corroboration not tied to a specific PCI device: IPMI, Bluetooth,
-/// and the SGX enclave node (which enriches the cpuid `sgx` capability with usability).
-fn detect_nodes(out: &mut Vec<(&'static str, Detection)>) {
-    let ipmi = Path::new("/dev/ipmi0").exists() || Path::new("/dev/ipmi/0").exists();
-    out.push((
-        "ipmi",
-        if ipmi {
-            Detection::with_detail(Status::Enabled, "linux-sysfs", "/dev/ipmi0 present")
-        } else {
-            Detection::with_detail(Status::Absent, "linux-sysfs", "no /dev/ipmi0")
-        },
-    ));
-
-    let bt = std::fs::read_dir("/sys/class/bluetooth")
-        .map(|mut d| d.any(|e| e.is_ok()))
-        .unwrap_or(false);
-    out.push((
-        "bluetooth",
-        if bt {
-            Detection::with_detail(Status::Enabled, "linux-sysfs", "hci device present")
-        } else {
-            Detection::with_detail(Status::Absent, "linux-sysfs", "no bluetooth hci")
-        },
-    ));
-
-    // SGX usability: only assert when the enclave node exists (don't contradict cpuid).
-    if Path::new("/dev/sgx_enclave").exists() {
-        out.push((
-            "sgx",
-            Detection::with_detail(Status::Enabled, "linux-sysfs", "/dev/sgx_enclave present"),
-        ));
-    }
-}
-
-/// Read a sysfs file, trimmed. `None` if absent/unreadable.
-fn read_trim(path: &str) -> Option<String> {
-    std::fs::read_to_string(path)
-        .ok()
+fn read_trim(ctx: &Context, path: &str) -> io::Result<String> {
+    ctx.reader
+        .read_to_string(Path::new(path))
         .map(|s| s.trim().to_string())
 }
 
-/// SMT enabled/disabled from `/sys/devices/system/cpu/smt/active`.
-fn detect_smt(out: &mut Vec<(&'static str, Detection)>) {
-    const PATH: &str = "/sys/devices/system/cpu/smt/active";
-    match std::fs::read_to_string(PATH) {
-        Ok(s) => {
-            let det = match s.trim() {
-                "1" => Detection::with_detail(Status::Enabled, "linux-sysfs", "smt/active=1"),
-                "0" => Detection::with_detail(Status::Disabled, "linux-sysfs", "smt/active=0"),
-                other => Detection::with_detail(
-                    Status::Unknown,
-                    "linux-sysfs",
-                    format!("smt/active={other:?}"),
-                ),
-            };
-            out.push(("smt", det));
+fn path_state(ctx: &Context, path: &str) -> Result<bool, io::Error> {
+    match ctx.reader.metadata(Path::new(path)) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+fn detect_smt(ctx: &Context, out: &mut Findings) {
+    let path = "/sys/devices/system/cpu/smt/active";
+    let (status, detail) = match read_trim(ctx, path) {
+        Ok(v) if v == "1" => (Status::Enabled, "smt/active=1".into()),
+        Ok(v) if v == "0" => (Status::Disabled, "smt/active=0".into()),
+        Ok(v) => (Status::Unknown, format!("malformed smt/active={v:?}")),
+        Err(e) => (Status::Unknown, format!("cannot inspect smt/active: {e}")),
+    };
+    out.push(finding_detail(SRC, "smt", status, detail));
+}
+
+fn detect_kvm(ctx: &Context, out: &mut Findings) {
+    let path = Path::new("/dev/kvm");
+    let det = match ctx.reader.metadata(path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            finding_detail(SRC, "kvm", Status::Absent, "/dev/kvm absent")
         }
-        Err(_) => {
-            // Node absent → kernel without SMT control, or no SMT-capable CPU.
-            out.push((
-                "smt",
-                Detection::with_detail(Status::Unknown, "linux-sysfs", "smt/active absent"),
+        Err(e) => finding_detail(
+            SRC,
+            "kvm",
+            Status::Unknown,
+            format!("cannot inspect /dev/kvm: {e}"),
+        ),
+        Ok(_) => match ctx.reader.open_device(path, true) {
+            Ok(()) => finding_detail(SRC, "kvm", Status::Enabled, "/dev/kvm openable"),
+            Err(e) if e.kind() == io::ErrorKind::PermissionDenied => finding_detail(
+                SRC,
+                "kvm",
+                Status::Present,
+                "/dev/kvm present but not permitted",
+            ),
+            Err(e) => finding_detail(
+                SRC,
+                "kvm",
+                Status::Unknown,
+                format!("/dev/kvm open failed: {e}"),
+            ),
+        },
+    };
+    out.push(det);
+}
+
+fn detect_tpm(ctx: &Context, out: &mut Findings) {
+    let states = ["/sys/class/tpm/tpm0", "/dev/tpm0"].map(|p| path_state(ctx, p));
+    let (status, detail) = if states.iter().any(|s| matches!(s, Ok(true))) {
+        (Status::Present, "tpm0 device present".to_string())
+    } else if states.iter().all(|s| matches!(s, Ok(false))) {
+        (Status::Absent, "no tpm0 device".to_string())
+    } else {
+        (
+            Status::Unknown,
+            "cannot fully inspect TPM interfaces".to_string(),
+        )
+    };
+    out.push(finding_detail(SRC, "tpm", status, detail));
+}
+
+fn detect_pstate(ctx: &Context, out: &mut Findings) {
+    let driver_path = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver";
+    match read_trim(ctx, driver_path) {
+        Ok(driver) => {
+            let governor =
+                read_trim(ctx, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor").ok();
+            let detail = governor.map_or_else(
+                || format!("driver={driver}"),
+                |g| format!("driver={driver}, governor={g}"),
+            );
+            out.push(finding_detail(
+                SRC,
+                "intel_pstate",
+                if driver == "intel_pstate" {
+                    Status::Enabled
+                } else {
+                    Status::Absent
+                },
+                detail,
             ));
         }
-    }
-}
-
-/// KVM usability: `/dev/kvm` present (and, if we have access, openable).
-fn detect_kvm(out: &mut Vec<(&'static str, Detection)>) {
-    const PATH: &str = "/dev/kvm";
-    if !Path::new(PATH).exists() {
-        out.push((
-            "kvm",
-            Detection::with_detail(Status::Absent, "linux-sysfs", "/dev/kvm absent"),
-        ));
-        return;
-    }
-    let det = match std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(PATH)
-    {
-        Ok(_) => Detection::with_detail(Status::Enabled, "linux-sysfs", "/dev/kvm openable"),
-        Err(e) => Detection::with_detail(
-            Status::Present,
-            "linux-sysfs",
-            format!("/dev/kvm present, open failed: {}", e.kind()),
-        ),
-    };
-    out.push(("kvm", det));
-}
-
-/// TPM device presence via `/sys/class/tpm/tpm0` or `/dev/tpm0`.
-fn detect_tpm(out: &mut Vec<(&'static str, Detection)>) {
-    let present = Path::new("/sys/class/tpm/tpm0").exists() || Path::new("/dev/tpm0").exists();
-    let det = if present {
-        Detection::with_detail(Status::Present, "linux-sysfs", "tpm0 device present")
-    } else {
-        Detection::with_detail(Status::Absent, "linux-sysfs", "no tpm0 device")
-    };
-    out.push(("tpm", det));
-}
-
-/// P-state driver, and the runtime enabled/disabled state of HWP and Turbo. The turbo
-/// and hwp detections aggregate onto the same features as CPUID's silicon capability,
-/// giving the Present-vs-Enabled distinction.
-fn detect_pstate(out: &mut Vec<(&'static str, Detection)>) {
-    let driver = read_trim("/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver");
-    let governor = read_trim("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
-
-    if let Some(drv) = &driver {
-        let is_pstate = drv == "intel_pstate";
-        let detail = match &governor {
-            Some(g) => format!("driver={drv}, governor={g}"),
-            None => format!("driver={drv}"),
-        };
-        let status = if is_pstate {
-            Status::Enabled
-        } else {
-            Status::Absent
-        };
-        out.push((
+        Err(e) => out.push(finding_detail(
+            SRC,
             "intel_pstate",
-            Detection::with_detail(status, "linux-sysfs", detail),
-        ));
+            Status::Unknown,
+            format!("cannot inspect cpufreq driver: {e}"),
+        )),
     }
 
-    // HWP is active when intel_pstate runs in "active" mode.
-    if let Some(status) = read_trim("/sys/devices/system/cpu/intel_pstate/status") {
-        let det = match status.as_str() {
-            "active" => {
-                Detection::with_detail(Status::Enabled, "linux-sysfs", "intel_pstate active (HWP)")
-            }
-            other => Detection::with_detail(
-                Status::Present,
-                "linux-sysfs",
-                format!("intel_pstate mode: {other}"),
-            ),
-        };
-        out.push(("hwp", det));
-    }
-
-    // Turbo: no_turbo=1 means turbo is disabled.
-    if let Some(no_turbo) = read_trim("/sys/devices/system/cpu/intel_pstate/no_turbo") {
-        let det = match no_turbo.as_str() {
-            "0" => Detection::with_detail(Status::Enabled, "linux-sysfs", "no_turbo=0"),
-            "1" => {
-                Detection::with_detail(Status::Disabled, "linux-sysfs", "no_turbo=1 (turbo off)")
-            }
-            other => {
-                Detection::with_detail(Status::Unknown, "linux-sysfs", format!("no_turbo={other}"))
-            }
-        };
-        out.push(("turbo", det));
+    // intel_pstate mode is intentionally not treated as HWP enablement. IA32_PM_ENABLE
+    // is the authoritative runtime source for HWP.
+    match read_trim(ctx, "/sys/devices/system/cpu/intel_pstate/no_turbo") {
+        Ok(v) if v == "0" => out.push(finding_detail(SRC, "turbo", Status::Enabled, "no_turbo=0")),
+        Ok(v) if v == "1" => out.push(finding_detail(
+            SRC,
+            "turbo",
+            Status::Disabled,
+            "no_turbo=1 (turbo off)",
+        )),
+        Ok(v) => out.push(finding_detail(
+            SRC,
+            "turbo",
+            Status::Unknown,
+            format!("malformed no_turbo={v:?}"),
+        )),
+        Err(e) => out.push(finding_detail(
+            SRC,
+            "turbo",
+            Status::Unknown,
+            format!("cannot inspect turbo state: {e}"),
+        )),
     }
 }
 
-/// C-state idle driver, with the available C-state names in the detail.
-fn detect_idle(out: &mut Vec<(&'static str, Detection)>) {
-    let Some(driver) = read_trim("/sys/devices/system/cpu/cpuidle/current_driver") else {
-        return;
+fn detect_idle(ctx: &Context, out: &mut Findings) {
+    let driver = match read_trim(ctx, "/sys/devices/system/cpu/cpuidle/current_driver") {
+        Ok(driver) => driver,
+        Err(e) => {
+            out.push(finding_detail(
+                SRC,
+                "intel_idle",
+                Status::Unknown,
+                format!("cannot inspect cpuidle: {e}"),
+            ));
+            return;
+        }
     };
     let mut states = Vec::new();
     for i in 0..16 {
-        match read_trim(&format!(
-            "/sys/devices/system/cpu/cpu0/cpuidle/state{i}/name"
-        )) {
-            Some(name) => states.push(name),
-            None => break,
+        match read_trim(
+            ctx,
+            &format!("/sys/devices/system/cpu/cpu0/cpuidle/state{i}/name"),
+        ) {
+            Ok(name) => states.push(name),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => break,
+            Err(_) => {
+                out.push(finding_detail(
+                    SRC,
+                    "intel_idle",
+                    Status::Unknown,
+                    "cpuidle state enumeration incomplete",
+                ));
+                return;
+            }
         }
     }
-    let detail = format!("driver={driver}, states: {}", states.join(" "));
-    let status = if driver == "intel_idle" {
-        Status::Enabled
-    } else {
-        Status::Absent
-    };
-    out.push((
+    out.push(finding_detail(
+        SRC,
         "intel_idle",
-        Detection::with_detail(status, "linux-sysfs", detail),
+        if driver == "intel_idle" {
+            Status::Enabled
+        } else {
+            Status::Absent
+        },
+        format!("driver={driver}, states: {}", states.join(" ")),
     ));
 }
 
-/// RAPL power domains under `/sys/class/powercap`.
-fn detect_rapl(out: &mut Vec<(&'static str, Detection)>) {
+fn detect_rapl(ctx: &Context, out: &mut Findings) {
+    let root = Path::new("/sys/class/powercap");
+    let entries = match ctx.reader.read_dir(root) {
+        Ok(entries) => entries,
+        Err(e) => {
+            out.push(finding_detail(
+                SRC,
+                "rapl",
+                Status::Unknown,
+                format!("cannot inspect powercap: {e}"),
+            ));
+            return;
+        }
+    };
     let mut domains = Vec::new();
-    for i in 0..8 {
-        match read_trim(&format!("/sys/class/powercap/intel-rapl:{i}/name")) {
-            Some(name) => domains.push(name),
-            None => break,
+    let mut complete = true;
+    for entry in entries {
+        let Ok(entry) = entry else {
+            complete = false;
+            continue;
+        };
+        if !entry.file_name.starts_with("intel-rapl:") {
+            continue;
+        }
+        match ctx.reader.read_to_string(&entry.path.join("name")) {
+            Ok(name) => domains.push(name.trim().to_string()),
+            Err(_) => complete = false,
         }
     }
-    let det = if domains.is_empty() {
-        Detection::with_detail(
-            Status::Absent,
-            "linux-sysfs",
-            "no intel-rapl powercap domains",
+    let (status, detail) = if !complete {
+        (
+            Status::Unknown,
+            "powercap enumeration incomplete".to_string(),
         )
+    } else if domains.is_empty() {
+        (Status::Absent, "no intel-rapl powercap domains".to_string())
     } else {
-        Detection::with_detail(
-            Status::Enabled,
-            "linux-sysfs",
-            format!("domains: {}", domains.join(", ")),
-        )
+        (Status::Enabled, format!("domains: {}", domains.join(", ")))
     };
-    out.push(("rapl", det));
+    out.push(finding_detail(SRC, "rapl", status, detail));
 }
 
-/// resctrl filesystem: mounted and usable when `/sys/fs/resctrl/info` exists.
-fn detect_resctrl(out: &mut Vec<(&'static str, Detection)>) {
-    let det = if Path::new("/sys/fs/resctrl/info").exists() {
-        Detection::with_detail(Status::Enabled, "linux-sysfs", "mounted at /sys/fs/resctrl")
-    } else if Path::new("/sys/fs/resctrl").exists() {
-        Detection::with_detail(Status::Present, "linux-sysfs", "present but not mounted")
-    } else {
-        Detection::with_detail(Status::Absent, "linux-sysfs", "no /sys/fs/resctrl")
+fn detect_resctrl(ctx: &Context, out: &mut Findings) {
+    let info = path_state(ctx, "/sys/fs/resctrl/info");
+    let root = path_state(ctx, "/sys/fs/resctrl");
+    let (status, detail) = match (info, root) {
+        (Ok(true), _) => (Status::Enabled, "mounted at /sys/fs/resctrl"),
+        (Ok(false), Ok(true)) => (Status::Present, "present but not mounted"),
+        (Ok(false), Ok(false)) => (Status::Absent, "no /sys/fs/resctrl"),
+        _ => (Status::Unknown, "cannot inspect resctrl"),
     };
-    out.push(("resctrl", det));
+    out.push(finding_detail(SRC, "resctrl", status, detail));
+}
+
+fn detect_nodes(ctx: &Context, out: &mut Findings) {
+    let ipmi = ["/dev/ipmi0", "/dev/ipmi/0"].map(|p| path_state(ctx, p));
+    let (status, detail) = if ipmi.iter().any(|s| matches!(s, Ok(true))) {
+        (Status::Enabled, "IPMI device present")
+    } else if ipmi.iter().all(|s| matches!(s, Ok(false))) {
+        (Status::Absent, "no IPMI device")
+    } else {
+        (Status::Unknown, "cannot fully inspect IPMI devices")
+    };
+    out.push(finding_detail(SRC, "ipmi", status, detail));
+
+    match ctx.reader.read_dir(Path::new("/sys/class/bluetooth")) {
+        Ok(entries) if entries.iter().any(Result::is_err) => out.push(finding_detail(
+            SRC,
+            "bluetooth",
+            Status::Unknown,
+            "bluetooth enumeration incomplete",
+        )),
+        Ok(entries) if entries.is_empty() => out.push(finding_detail(
+            SRC,
+            "bluetooth",
+            Status::Absent,
+            "no bluetooth hci",
+        )),
+        Ok(_) => out.push(finding_detail(
+            SRC,
+            "bluetooth",
+            Status::Enabled,
+            "hci device present",
+        )),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => out.push(finding_detail(
+            SRC,
+            "bluetooth",
+            Status::Absent,
+            "no bluetooth class",
+        )),
+        Err(e) => out.push(finding_detail(
+            SRC,
+            "bluetooth",
+            Status::Unknown,
+            format!("cannot inspect bluetooth: {e}"),
+        )),
+    }
+
+    match path_state(ctx, "/dev/sgx_enclave") {
+        Ok(true) => out.push(finding_detail(
+            SRC,
+            "sgx",
+            Status::Enabled,
+            "/dev/sgx_enclave present",
+        )),
+        Ok(false) => {}
+        Err(e) => out.push(finding_detail(
+            SRC,
+            "sgx",
+            Status::Unknown,
+            format!("cannot inspect SGX device: {e}"),
+        )),
+    }
 }
