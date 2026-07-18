@@ -4,14 +4,11 @@ A modular, read-only detector for Intel® processor and platform features. It re
 *whether* a feature exists, but — where determinable — whether firmware enabled it and
 whether the OS is using it. These are separate questions and the tool keeps them separate.
 
-See [`PLAN.md`](PLAN.md) for the full feature catalog and roadmap.
+## Capabilities
 
-## Status
-
-Milestones **M0**–**M5** are complete. The catalog covers ~205 features across ISA,
-security, CPU vulnerabilities, architectural capabilities, virtualization, power,
-topology, performance-monitoring, RDT, on-SoC accelerators, chipset/platform devices and
-firmware. Nine source-authoritative probes run today:
+The catalog covers more than 200 instruction-set, security, vulnerability, virtualization,
+power, topology, performance-monitoring, RDT, accelerator, chipset, and firmware features.
+Nine independent probes provide traceable evidence for each result:
 
 * **cpuid** — `raw-cpuid` plus direct leaf reads for bits it doesn't expose, executed
   **per logical core** (pinned via `sched_setaffinity`) so hybrid P/E asymmetries are
@@ -37,10 +34,10 @@ firmware. Nine source-authoritative probes run today:
 * **efi** — UEFI boot, Secure Boot / Setup Mode, and ESRT.
 * **dmi** — board/BIOS identity in the banner and SMBIOS memory ECC + installed DIMMs.
 
-Later milestones: M6 = MEI protocol / TXT / Boot Guard decode / server extras (CXL, SST).
-Target platform is Linux/x86-64.
+The supported production platform is Linux on x86-64. Most probes run without elevated
+privileges; MSR-backed details require access to `/dev/cpu/*/msr`.
 
-## Build & run
+## Build and run
 
 ```sh
 cargo build --release
@@ -59,6 +56,20 @@ Root does not guarantee access: containers, namespaces, lockdown, mount policy, 
 cgroups, and firmware can hide interfaces. Missing, unreadable, malformed, or partially
 enumerated authoritative interfaces are reported conservatively as `unknown`; `absent`
 means the parent interface was successfully inspected and no match was found.
+
+## Example output
+
+The following report is based on a real read-only `sudo` run and includes representative
+detections from every report category. Selected CPU, machine, board, BIOS, PCI, memory,
+volatile-counter, power, and raw firmware-register values were realistically modified for
+privacy and to avoid fingerprinting this device. Feature statuses and probe coverage remain
+representative of the real run; the displayed inventory should not be treated as a benchmark
+or an exact specification of the test machine.
+
+![Sanitized colored terminal output showing instruction-set, security, virtualization, power, and firmware detections](docs/example-output.svg)
+
+Color meaning: green = enabled/protected, cyan = present, yellow = disabled, and grey =
+supporting evidence. Use `--no-color` for logs or terminals without ANSI color support.
 
 ## Architecture
 
@@ -86,13 +97,6 @@ A `Detection` carries a `Status` — `Present` (silicon), `Enabled`/`Disabled`
 is the most informative non-conflicting one. Simultaneous `Enabled` and `Disabled`
 findings produce an `Unknown` headline plus a conflict note while retaining both findings.
 Asymmetric CPU flags are reported with per-CPU counts instead of trusting CPU 0.
-
-Adding a **feature**: add a `FeatureDef` to `catalog.rs` and teach a probe to emit its id.
-Adding a **mechanism**: implement the `Probe` trait and register it in `probes::all()`.
-
-> Note: `PLAN.md` M0 called for a multi-crate workspace. This ships as a single crate with
-> the same module boundaries — promoting to a workspace is deferred until probes acquire
-> divergent heavy dependencies, at which point the split is mechanical.
 
 ## License
 

@@ -1,7 +1,5 @@
 //! `intel-features` — an independent modular detector for Intel® processor and platform features.
 //!
-//! See `PLAN.md` for the full architecture and roadmap. The short version:
-//!
 //! * [`catalog`] is the static list of features the tool knows about.
 //! * [`probes`] holds one module per *detection mechanism* (CPUID, sysfs, …). Each
 //!   emits [`Detection`](model::Detection)s keyed by catalog feature id.

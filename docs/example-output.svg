@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1580" height="1870" viewBox="0 0 1580 1870" role="img" aria-labelledby="title desc" xml:space="preserve">
+  <title id="title">Sanitized colored intel-features terminal output</title>
+  <desc id="desc">A privileged report with selected identifying and inventory values realistically modified for privacy.</desc>
+  <style>
+    .bg { fill: #0d1117; }
+    .frame { fill: none; stroke: #30363d; stroke-width: 2; }
+    text { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; font-size: 16px; fill: #f0f6fc; }
+    .title { font-weight: 700; font-size: 18px; }
+    .section { font-weight: 700; fill: #f0f6fc; }
+    .dim { fill: #8b949e; }
+    .cyan { fill: #56d4dd; }
+    .green { fill: #3fb950; }
+    .yellow { fill: #d29922; }
+  </style>
+  <rect class="bg" width="1580" height="1870" rx="10"/>
+  <rect class="frame" x="1" y="1" width="1578" height="1868" rx="10"/>
+
+  <text class="title" x="24" y="34">intel-features 0.1.0</text>
+  <text x="24" y="60">CPU:       Intel(R) Core(TM) Ultra 9 285K</text>
+  <text x="24" y="84">Vendor:    GenuineIntel   family 0x6 model 0xc6 stepping 2</text>
+  <text x="24" y="108">Generation: Arrow Lake — Core Ultra Series 2 (client)</text>
+  <text x="24" y="132">Topology:  24 logical, hybrid: 8 P-core(s) + 16 E-core(s)</text>
+  <text x="24" y="156">System:    Example OEM Z890 Workstation  (board EXAMPLE-Z890-PRO)</text>
+  <text x="24" y="180">BIOS:      Example OEM 2.14.0  (06/18/2026)</text>
+  <text x="24" y="204">Privilege: root (availability still depends on host interfaces and namespaces)</text>
+
+  <text class="section" x="24" y="244">Instruction Set Extensions</text>
+  <text class="dim" x="24" y="268">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="292"><tspan class="cyan">  • SSE2                   present</tspan><tspan class="dim">   cpuid, procfs            </tspan>128-bit double-precision and integer SIMD; x86-64 baseline</text>
+  <text x="24" y="316"><tspan class="cyan">  • AVX2                   present</tspan><tspan class="dim">   cpuid, procfs            </tspan>256-bit integer SIMD, gathers, shifts, and permutations</text>
+  <text x="24" y="340"><tspan class="cyan">  • AVX-VNNI               present</tspan><tspan class="dim">   cpuid, procfs            </tspan>Integer dot products for inference and DSP</text>
+  <text x="24" y="364"><tspan class="cyan">  • AES-NI                 present</tspan><tspan class="dim">   cpuid, procfs            </tspan>AES encryption/decryption rounds and key generation</text>
+  <text x="24" y="388"><tspan class="cyan">  • SHA-NI                 present</tspan><tspan class="dim">   cpuid, procfs            </tspan>Hardware SHA-1 and SHA-256 operations</text>
+
+  <text class="section" x="24" y="428">Security</text>
+  <text class="dim" x="24" y="452">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="476"><tspan class="cyan">  • NX / XD                present</tspan><tspan class="dim">   cpuid, procfs            </tspan>No-execute page protection</text>
+  <text x="24" y="500"><tspan class="cyan">  • SMEP                   present</tspan><tspan class="dim">   cpuid, procfs            </tspan>Supervisor-mode execution prevention</text>
+  <text x="24" y="524"><tspan class="cyan">  • CET Shadow Stack       present</tspan><tspan class="dim">   cpuid, procfs            </tspan>Return-address protection</text>
+  <text x="24" y="548"><tspan class="cyan">  • TPM                    present</tspan><tspan class="dim">   linux-sysfs, acpi        </tspan>Trusted Platform Module device present</text>
+  <text x="24" y="572"><tspan class="green">  ✓ Spectre v2             enabled</tspan><tspan class="dim">   mitigated                </tspan>Branch-target injection protection</text>
+
+  <text class="section" x="24" y="612">Virtualization</text>
+  <text class="dim" x="24" y="636">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="660"><tspan class="green">  ✓ VT-x (VMX)             enabled</tspan><tspan class="dim">   cpuid, procfs, msr       </tspan>Hardware virtualization</text>
+  <text x="24" y="684"><tspan class="green">  ✓ KVM usable             enabled</tspan><tspan class="dim">   linux-sysfs              </tspan>/dev/kvm present and openable</text>
+  <text x="24" y="708"><tspan class="green">  ✓ VT-d (IOMMU)           enabled</tspan><tspan class="dim">   acpi                     </tspan>DMA remapping / IOMMU</text>
+  <text x="24" y="732"><tspan class="cyan">  • EPT                    present</tspan><tspan class="dim">   procfs, msr              </tspan>Second-level guest address translation</text>
+
+  <text class="section" x="24" y="772">Power &amp; Thermal</text>
+  <text class="dim" x="24" y="796">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="820"><tspan class="green">  ✓ HWP / Speed Shift      enabled</tspan><tspan class="dim">   cpuid, procfs, msr       </tspan>Hardware-managed P-states</text>
+  <text x="24" y="844"><tspan class="cyan">  • TjMax                  present</tspan><tspan class="dim">   105 °C                   </tspan>Thermal throttle temperature</text>
+  <text x="24" y="868"><tspan class="cyan">  • Package TDP            present</tspan><tspan class="dim">   125 W                    </tspan>Thermal design power</text>
+  <text x="24" y="892"><tspan class="cyan">  • SMI Count              present</tspan><tspan class="dim">   2,184 SMIs               </tspan>System Management Interrupts seen</text>
+  <text x="24" y="916"><tspan class="green">  ✓ RAPL powercap          enabled</tspan><tspan class="dim">   linux-sysfs              </tspan>Power-limit domains exposed</text>
+
+  <text class="section" x="24" y="956">Topology</text>
+  <text class="dim" x="24" y="980">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="1004"><tspan class="cyan">  • x2APIC                 present</tspan><tspan class="dim">   cpuid, procfs            </tspan>Extended interrupt-controller addressing</text>
+  <text x="24" y="1028"><tspan class="cyan">  • Hybrid cores           present</tspan><tspan class="dim">   cpuid                    </tspan>P-core / E-core hybrid topology</text>
+  <text x="24" y="1052"><tspan class="yellow">  ✗ SMT / Hyper-Threading  disabled</tspan><tspan class="dim">   linux-sysfs              </tspan>Simultaneous multithreading state</text>
+  <text x="24" y="1076"><tspan class="cyan">  • Invariant TSC          present</tspan><tspan class="dim">   procfs                   </tspan>Constant-rate timestamp counter</text>
+
+  <text class="section" x="24" y="1116">Performance Monitoring &amp; Trace</text>
+  <text class="dim" x="24" y="1140">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="1164"><tspan class="cyan">  • Arch PerfMon           present</tspan><tspan class="dim">   cpuid, procfs            </tspan>Architectural performance-monitoring unit</text>
+  <text x="24" y="1188"><tspan class="cyan">  • PEBS                   present</tspan><tspan class="dim">   procfs                   </tspan>Precise event-based sampling</text>
+  <text x="24" y="1212"><tspan class="cyan">  • Intel PT               present</tspan><tspan class="dim">   cpuid, procfs            </tspan>Processor execution tracing</text>
+  <text x="24" y="1236"><tspan class="cyan">  • Arch LBR               present</tspan><tspan class="dim">   cpuid, procfs            </tspan>Architectural last-branch records</text>
+
+  <text class="section" x="24" y="1276">Resource Director Technology (RDT)</text>
+  <text class="dim" x="24" y="1300">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="1324"><tspan class="cyan">  • RDT Allocation         present</tspan><tspan class="dim">   cpuid, procfs            </tspan>Cache and memory-bandwidth allocation</text>
+
+  <text class="section" x="24" y="1364">On-SoC Accelerators &amp; Engines</text>
+  <text class="dim" x="24" y="1388">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="1412"><tspan class="green">  ✓ Integrated GPU         enabled</tspan><tspan class="dim">   dev 0x7d66, driver xe    </tspan>Integrated graphics</text>
+  <text x="24" y="1436"><tspan class="green">  ✓ NPU / VPU              enabled</tspan><tspan class="dim">   dev 0xad1c, driver intel_vpu</tspan> Neural/AI accelerator</text>
+
+  <text class="section" x="24" y="1476">Chipset &amp; Platform Devices</text>
+  <text class="dim" x="24" y="1500">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="1524"><tspan class="green">  ✓ Ethernet               enabled</tspan><tspan class="dim">   dev 0x125d, driver igc   </tspan>Integrated Ethernet controller</text>
+  <text x="24" y="1548"><tspan class="green">  ✓ Wi-Fi                  enabled</tspan><tspan class="dim">   dev 0x272c, driver iwlwifi</tspan> Wireless networking</text>
+  <text x="24" y="1572"><tspan class="green">  ✓ Thunderbolt / USB4     enabled</tspan><tspan class="dim">   thunderbolt              </tspan>High-speed peripheral connectivity</text>
+  <text x="24" y="1596"><tspan class="cyan">  • Installed Memory       present</tspan><tspan class="dim">   2 populated: 48 GB DDR5-5600, 48 GB DDR5-5600</tspan> Populated DIMMs</text>
+
+  <text class="section" x="24" y="1636">Platform &amp; Firmware</text>
+  <text class="dim" x="24" y="1660">    Feature                 Status    Evidence                 Purpose / notable instructions</text>
+  <text x="24" y="1684"><tspan class="green">  ✓ MSR access             enabled</tspan><tspan class="dim">   msr                      </tspan>Privileged register interface readable</text>
+  <text x="24" y="1708"><tspan class="green">  ✓ FEATURE_CONTROL lock    enabled</tspan><tspan class="dim">   msr                      </tspan>Feature-control register locked by firmware</text>
+  <text x="24" y="1732"><tspan class="cyan">  • Boot Guard             present</tspan><tspan class="dim">   SACM_INFO = 0x620000006f </tspan>Verified/measured-boot capability register</text>
+  <text x="24" y="1756"><tspan class="green">  ✓ UEFI Boot              enabled</tspan><tspan class="dim">   efi                      </tspan>Booted via UEFI</text>
+  <text x="24" y="1780"><tspan class="yellow">  ✗ Secure Boot            disabled</tspan><tspan class="dim">   efi                      </tspan>UEFI Secure Boot state</text>
+  <text x="24" y="1804"><tspan class="green">  ✓ ESRT / Capsule Update  enabled</tspan><tspan class="dim">   efi                      </tspan>Firmware capsule-update support</text>
+
+  <text class="dim" x="24" y="1844">Privacy notice: selected identity, inventory, counter, power, PCI, and firmware values were realistically modified.</text>
+</svg>
