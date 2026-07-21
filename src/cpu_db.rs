@@ -6,6 +6,8 @@
 
 use serde::Serialize;
 
+use crate::model::ClassExpectation;
+
 /// Human-friendly identification for an Intel CPUID family/model pair.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct CpuModelInfo {
@@ -117,6 +119,85 @@ pub fn lookup(vendor: &str, family: u32, model: u32) -> Option<CpuModelInfo> {
     Some(found)
 }
 
+/// Return a conservative class-level expectation for a feature.
+///
+/// These hints are intentionally much smaller than the feature catalog. They cover
+/// only capabilities that are well associated with a family/model class. In
+/// particular, `Possible` means that the feature is offered by some SKU or platform
+/// configuration in the class; it does not mean the current SKU was sold with it.
+pub fn feature_expectation(
+    vendor: &str,
+    family: u32,
+    model: u32,
+    feature: &str,
+) -> Option<ClassExpectation> {
+    let model_info = lookup(vendor, family, model)?;
+
+    // Core Ultra is explicitly a CPU + GPU + NPU product class. A missing NPU on
+    // these recognized model families is stronger than an ordinary optional-device
+    // hint and can point to firmware masking or incomplete enumeration.
+    let core_ultra =
+        family == 6 && matches!(model, 0xaa | 0xac | 0xb5 | 0xbd | 0xc5 | 0xc6 | 0xcc | 0xe5);
+    if core_ultra && feature == "npu" {
+        return Some(ClassExpectation::Expected);
+    }
+
+    // Integrated graphics exists on many, but not every, client SKU (for example,
+    // desktop F SKUs are a notable exception), so absence is advisory only.
+    if model_info.segment.contains("client") && feature == "igpu" {
+        return Some(ClassExpectation::Possible);
+    }
+
+    // Mobile client platforms commonly offer these integrated connectivity and
+    // low-power capabilities, but system-vendor routing and SKU choices vary.
+    if model_info.segment == "mobile client"
+        && matches!(feature, "wifi" | "bluetooth" | "thunderbolt" | "s0ix")
+    {
+        return Some(ClassExpectation::Possible);
+    }
+
+    // These client generations have platform/SKU configurations with VMD and/or a
+    // Gaussian & Neural Accelerator. Keep the hint optional because both vary.
+    let recent_client = family == 6
+        && matches!(
+            model,
+            0x8c | 0x8d
+                | 0x97
+                | 0x9a
+                | 0xb7
+                | 0xba
+                | 0xbf
+                | 0xaa
+                | 0xac
+                | 0xb5
+                | 0xbd
+                | 0xc5
+                | 0xc6
+                | 0xcc
+                | 0xe5
+        );
+    if recent_client && matches!(feature, "vmd" | "gna") {
+        return Some(ClassExpectation::Possible);
+    }
+
+    // Server systems can legitimately omit these at the board or deployment level,
+    // but their absence is useful to call out rather than bury among inapplicable ISA
+    // extensions.
+    if model_info.segment.contains("server") && matches!(feature, "ipmi" | "memory_ecc" | "numa") {
+        return Some(ClassExpectation::Possible);
+    }
+
+    // Fourth-generation Xeon Scalable and newer families offer a selection of
+    // accelerator and CXL configurations. Engine counts and enablement are SKU- and
+    // firmware-dependent, hence `Possible` rather than `Expected`.
+    let accelerator_xeon = matches!((family, model), (6, 0x8f | 0xcf | 0xad | 0xae) | (19, 0x01));
+    if accelerator_xeon && matches!(feature, "dsa" | "iaa" | "qat" | "dlb" | "cxl" | "hmat") {
+        return Some(ClassExpectation::Possible);
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +219,19 @@ mod tests {
     fn refuses_unknown_or_non_intel_cpu() {
         assert_eq!(lookup("GenuineIntel", 6, 0xfe), None);
         assert_eq!(lookup("AuthenticAMD", 6, 0x97), None);
+    }
+
+    #[test]
+    fn class_expectations_are_conservative_and_intel_only() {
+        assert_eq!(
+            feature_expectation("GenuineIntel", 6, 0xc6, "npu"),
+            Some(ClassExpectation::Expected)
+        );
+        assert_eq!(
+            feature_expectation("GenuineIntel", 6, 0xc6, "igpu"),
+            Some(ClassExpectation::Possible)
+        );
+        assert_eq!(feature_expectation("GenuineIntel", 6, 0x3c, "npu"), None);
+        assert_eq!(feature_expectation("AuthenticAMD", 6, 0xc6, "npu"), None);
     }
 }

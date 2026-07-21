@@ -27,6 +27,21 @@ pub enum Status {
     Unknown,
 }
 
+/// How strongly a feature is associated with the recognized CPU family/model class.
+///
+/// This is deliberately separate from [`Status`]: a probe reports what this machine
+/// actually exposes, while this hint says what comparable members of the class may
+/// expose. `Possible` must therefore never be read as a claim about the exact SKU.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClassExpectation {
+    /// The feature is part of the recognized processor class, barring masking or a
+    /// probe/database error.
+    Expected,
+    /// Some SKUs or platform configurations in the class provide the feature.
+    Possible,
+}
+
 impl Status {
     /// Higher rank = more authoritative / more informative for the headline.
     pub fn rank(self) -> u8 {

@@ -9,7 +9,7 @@ use std::fmt;
 use serde::Serialize;
 
 use crate::catalog;
-use crate::model::{Category, Detection, Privilege, Status};
+use crate::model::{Category, ClassExpectation, Detection, Privilege, Status};
 use crate::probes::cpuid::Identity;
 use crate::probes::firmware::SystemInfo;
 
@@ -22,11 +22,33 @@ pub struct FeatureReport {
     pub description: &'static str,
     /// Headline status: the highest-ranked detection (see [`Status::rank`]).
     pub status: Status,
+    /// Relationship to the recognized CPU family/model class, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub class_expectation: Option<ClassExpectation>,
+    /// A warning derived from status, cross-probe evidence, and class expectation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention: Option<FeatureAttention>,
     /// Every probe's finding for this feature, in probe run order.
     pub detections: Vec<Detection>,
     /// Render the winning detection's detail inline instead of the probe names.
     #[serde(skip)]
     pub inline_detail: bool,
+}
+
+/// Why a feature deserves attention beyond its literal probe status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FeatureAttention {
+    /// Silicon reports the feature but the kernel does not expose it.
+    Masked,
+    /// The feature belongs to the class but is absent on this machine.
+    ExpectedMissing,
+    /// The feature belongs to the class but is explicitly disabled.
+    ExpectedDisabled,
+    /// Some members/configurations of the class offer it, but it is absent here.
+    PossibleMissing,
+    /// Some members/configurations of the class offer it, but it is disabled here.
+    PossibleDisabled,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,12 +128,18 @@ impl Report {
                 if let Some(note) = disparity_note(def.name, &detections) {
                     notes.push(note);
                 }
+                let class_expectation = identity.as_ref().and_then(|id| {
+                    crate::cpu_db::feature_expectation(&id.vendor, id.family, id.model, def.id)
+                });
+                let attention = feature_attention(status, &detections, class_expectation);
                 features.push(FeatureReport {
                     id: def.id,
                     name: def.name,
                     category: def.category,
                     description: def.description,
                     status,
+                    class_expectation,
+                    attention,
                     detections,
                     inline_detail: def.inline_detail,
                 });
@@ -150,7 +178,14 @@ impl Report {
                     }
                     // Default view hides absent features and ones no probe covered
                     // ("not probed"); `--all` shows everything.
-                    f.status != Status::Absent && !f.detections.is_empty()
+                    (f.status != Status::Absent && !f.detections.is_empty())
+                        || matches!(
+                            f.attention,
+                            Some(
+                                FeatureAttention::ExpectedMissing
+                                    | FeatureAttention::PossibleMissing
+                            )
+                        )
                 })
                 .collect();
             if visible.is_empty() {
@@ -260,10 +295,28 @@ impl fmt::Display for ReportError {
 impl std::error::Error for ReportError {}
 
 fn render_feature(s: &mut String, f: &FeatureReport, opts: TextOptions) {
-    let glyph = colorize(f.status.glyph(), f.status.color(), opts.color);
+    let (glyph_text, label_text, color) = feature_visual(f);
+    let glyph = colorize(glyph_text, color, opts.color);
     // For vulnerabilities the mitigation string is the point, so show it inline; for
     // everything else the contributing probe names are the useful trailing hint.
-    let trailing = if f.detections.is_empty() {
+    let trailing = if matches!(
+        f.attention,
+        Some(
+            FeatureAttention::ExpectedMissing
+                | FeatureAttention::ExpectedDisabled
+                | FeatureAttention::PossibleMissing
+                | FeatureAttention::PossibleDisabled
+        )
+    ) {
+        let level = match f.class_expectation {
+            Some(ClassExpectation::Expected) => "expected",
+            Some(ClassExpectation::Possible) => "possible",
+            None => "class hint",
+        };
+        format!("{level} for CPU class")
+    } else if f.attention == Some(FeatureAttention::Masked) {
+        "CPUID vs procfs".to_string()
+    } else if f.detections.is_empty() {
         "not probed".to_string()
     } else if f.inline_detail {
         f.detections
@@ -278,11 +331,7 @@ fn render_feature(s: &mut String, f: &FeatureReport, opts: TextOptions) {
             .collect::<Vec<_>>()
             .join(", ")
     };
-    let label = colorize(
-        &format!("{:<9}", f.status.label()),
-        f.status.color(),
-        opts.color,
-    );
+    let label = colorize(&format!("{label_text:<9}"), color, opts.color);
     let evidence = format!("{trailing:<24}");
     s.push_str(&format!(
         "  {} {:<22} {} {} {}\n",
@@ -300,6 +349,49 @@ fn render_feature(s: &mut String, f: &FeatureReport, opts: TextOptions) {
                 opts.color,
             ));
         }
+    }
+}
+
+fn feature_visual(f: &FeatureReport) -> (&'static str, &'static str, &'static str) {
+    match f.attention {
+        Some(FeatureAttention::Masked) => ("!", "masked", "31"),
+        Some(FeatureAttention::ExpectedMissing) => ("!", "missing", "31"),
+        Some(FeatureAttention::ExpectedDisabled) => ("✗", "disabled", "31"),
+        Some(FeatureAttention::PossibleMissing) => ("!", "missing", "33"),
+        Some(FeatureAttention::PossibleDisabled) => ("✗", "disabled", "33"),
+        None => (f.status.glyph(), f.status.label(), f.status.color()),
+    }
+}
+
+fn feature_attention(
+    status: Status,
+    detections: &[Detection],
+    class_expectation: Option<ClassExpectation>,
+) -> Option<FeatureAttention> {
+    let cpuid_present = detections
+        .iter()
+        .any(|d| d.source == "cpuid" && matches!(d.status, Status::Present | Status::Enabled));
+    let procfs_absent = detections
+        .iter()
+        .any(|d| d.source == "procfs" && d.status == Status::Absent);
+    if cpuid_present && procfs_absent {
+        return Some(FeatureAttention::Masked);
+    }
+
+    match (class_expectation, status) {
+        (Some(ClassExpectation::Expected), Status::Absent) => {
+            Some(FeatureAttention::ExpectedMissing)
+        }
+        (Some(ClassExpectation::Expected), Status::Disabled) => {
+            Some(FeatureAttention::ExpectedDisabled)
+        }
+        (Some(ClassExpectation::Possible), Status::Absent) => {
+            Some(FeatureAttention::PossibleMissing)
+        }
+        (Some(ClassExpectation::Possible), Status::Disabled) => {
+            Some(FeatureAttention::PossibleDisabled)
+        }
+        _ => None,
     }
 }
 

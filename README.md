@@ -68,8 +68,12 @@ or an exact specification of the test machine.
 
 ![Sanitized colored terminal output showing instruction-set, security, virtualization, power, and firmware detections](docs/example-output.svg)
 
-Color meaning: green = enabled/protected, cyan = present, yellow = disabled, and grey =
-supporting evidence. Use `--no-color` for logs or terminals without ANSI color support.
+Color meaning: green = enabled/protected, cyan = present, yellow = disabled or an
+optional capability missing from a recognized CPU class, red = an expected capability
+missing/disabled or silicon masked from the kernel, and grey = supporting evidence.
+Class hints are conservative family/model comparisons, not claims that every exact SKU
+contains every optional feature. Use `--no-color` for logs or terminals without ANSI
+color support.
 
 ## Architecture
 

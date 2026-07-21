@@ -4,9 +4,11 @@
 use std::collections::HashMap;
 
 use intel_features::catalog;
+use intel_features::cpu_db::CpuModelInfo;
 use intel_features::model::{Category, Detection, Privilege, Status};
+use intel_features::probes::cpuid::Identity;
 use intel_features::probes::{self, Context};
-use intel_features::report::Report;
+use intel_features::report::{FeatureAttention, Report};
 
 /// Every catalog feature id must be unique — probes key detections by id, so a
 /// collision would silently merge two features.
@@ -214,6 +216,67 @@ fn text_output_includes_purpose_column() {
     assert!(text.contains("AES encryption/decryption rounds and key generation"));
 }
 
+#[test]
+fn expected_class_feature_missing_is_visible_and_red() {
+    let mut results = HashMap::new();
+    results.insert("npu", vec![Detection::new(Status::Absent, "pci")]);
+    let report = Report::build(results, Some(arrow_lake_identity()), None, Privilege::User);
+    let npu = find(&report, "npu");
+    assert_eq!(npu.attention, Some(FeatureAttention::ExpectedMissing));
+
+    // Class-relevant missing features remain visible in the default view even though
+    // ordinary absent catalog entries are hidden.
+    let text = report.render_text(intel_features::report::TextOptions {
+        color: true,
+        verbose: false,
+        hide_absent: true,
+    });
+    assert!(text.contains("NPU / VPU"));
+    assert!(text.contains("\x1b[31m!\x1b[0m"));
+    assert!(text.contains("expected for CPU class"));
+}
+
+#[test]
+fn optional_class_feature_missing_is_yellow() {
+    let mut results = HashMap::new();
+    results.insert("igpu", vec![Detection::new(Status::Absent, "pci")]);
+    let report = Report::build(results, Some(arrow_lake_identity()), None, Privilege::User);
+    assert_eq!(
+        find(&report, "igpu").attention,
+        Some(FeatureAttention::PossibleMissing)
+    );
+    let text = report.render_text(intel_features::report::TextOptions {
+        color: true,
+        verbose: false,
+        hide_absent: true,
+    });
+    assert!(text.contains("\x1b[33m!\x1b[0m"));
+    assert!(text.contains("possible for CPU class"));
+}
+
+#[test]
+fn silicon_masked_from_procfs_is_red() {
+    let mut results = HashMap::new();
+    results.insert(
+        "aes",
+        vec![
+            Detection::new(Status::Present, "cpuid"),
+            Detection::new(Status::Absent, "procfs"),
+        ],
+    );
+    let report = Report::build(results, None, None, Privilege::User);
+    assert_eq!(
+        find(&report, "aes").attention,
+        Some(FeatureAttention::Masked)
+    );
+    let text = report.render_text(intel_features::report::TextOptions {
+        color: true,
+        verbose: false,
+        hide_absent: true,
+    });
+    assert!(text.contains("\x1b[31mmasked   \x1b[0m"));
+}
+
 /// The real probes are read-only; running them must never panic regardless of host.
 #[test]
 fn real_probes_do_not_panic() {
@@ -245,4 +308,24 @@ fn find<'a>(report: &'a Report, id: &str) -> &'a intel_features::report::Feature
         .flat_map(|c| &c.features)
         .find(|f| f.id == id)
         .unwrap_or_else(|| panic!("feature {id} not found"))
+}
+
+fn arrow_lake_identity() -> Identity {
+    Identity {
+        vendor: "GenuineIntel".to_string(),
+        brand: "Test Intel processor".to_string(),
+        family: 6,
+        model: 0xc6,
+        stepping: 0,
+        model_info: Some(CpuModelInfo {
+            codename: "Arrow Lake",
+            generation: "Core Ultra Series 2",
+            segment: "client",
+        }),
+        logical_cpus: 24,
+        hybrid: true,
+        p_cores: 8,
+        e_cores: 16,
+        microcode: None,
+    }
 }
