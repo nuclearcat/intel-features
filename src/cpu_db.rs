@@ -119,6 +119,35 @@ pub fn lookup(vendor: &str, family: u32, model: u32) -> Option<CpuModelInfo> {
     Some(found)
 }
 
+/// Maximum memory channels provided by one processor socket for CPU families where
+/// the family/model ID gives an unambiguous answer.
+///
+/// This is a silicon limit, not a count of populated or currently active channels.
+/// Ambiguous family/model groups deliberately return `None` rather than guessing.
+pub fn max_memory_channels(vendor: &str, family: u32, model: u32) -> Option<u8> {
+    if vendor != "GenuineIntel" {
+        return None;
+    }
+
+    match (family, model) {
+        // Xeon E5 generations use four channels per socket.
+        (6, 0x2d | 0x3e | 0x3f | 0x4f) => Some(4),
+        // The Skylake-SP CPUID model is shared by the first three Xeon Scalable
+        // generations; all three retain six channels per socket.
+        (6, 0x55) => Some(6),
+        // Ice Lake-SP through Emerald Rapids Xeon Scalable families.
+        (6, 0x6a | 0x8f | 0xcf) => Some(8),
+
+        // Conventional Core client memory controllers expose two channels. Avoid
+        // assigning a value to mobile/SoC families whose 32-bit subchannels make
+        // the marketing channel count easy to misinterpret.
+        (6, 0x2a | 0x3a | 0x3c | 0x45 | 0x46 | 0x3d | 0x47)
+        | (6, 0x4e | 0x5e | 0x9e | 0xa5 | 0xa7)
+        | (6, 0x97 | 0xb7 | 0xba | 0xbf | 0xb5 | 0xc5 | 0xc6 | 0xd7) => Some(2),
+        _ => None,
+    }
+}
+
 /// Return a conservative class-level expectation for a feature.
 ///
 /// These hints are intentionally much smaller than the feature catalog. They cover
@@ -213,12 +242,15 @@ mod tests {
     fn shared_model_is_reported_as_a_range() {
         let cpu = lookup("GenuineIntel", 6, 0x55).unwrap();
         assert_eq!(cpu.generation, "1st–3rd Gen Xeon Scalable");
+        assert_eq!(max_memory_channels("GenuineIntel", 6, 0x55), Some(6));
     }
 
     #[test]
     fn refuses_unknown_or_non_intel_cpu() {
         assert_eq!(lookup("GenuineIntel", 6, 0xfe), None);
         assert_eq!(lookup("AuthenticAMD", 6, 0x97), None);
+        assert_eq!(max_memory_channels("GenuineIntel", 6, 0xfe), None);
+        assert_eq!(max_memory_channels("AuthenticAMD", 6, 0x55), None);
     }
 
     #[test]

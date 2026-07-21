@@ -33,6 +33,10 @@ pub struct Identity {
     /// Loaded microcode revision (from sysfs), e.g. `"0x11b"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub microcode: Option<String>,
+    /// Maximum memory channels supported by one processor socket for recognized,
+    /// unambiguous family/model groups. This is not an active/populated count.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_memory_channels: Option<u8>,
 }
 
 pub struct CpuidProbe;
@@ -673,6 +677,7 @@ fn build_identity(cores: &[CoreScan], ctx: &Context) -> Identity {
             p_cores,
             e_cores,
             microcode,
+            max_memory_channels: cpu_db::max_memory_channels(&ci.vendor, ci.family, ci.model),
         },
         None => unreachable!("identity requires at least one successful scan"),
     }

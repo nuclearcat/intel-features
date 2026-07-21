@@ -7,6 +7,8 @@ use intel_features::catalog;
 use intel_features::cpu_db::CpuModelInfo;
 use intel_features::model::{Category, Detection, Privilege, Status};
 use intel_features::probes::cpuid::Identity;
+use intel_features::probes::firmware::SystemInfo;
+use intel_features::probes::pci::ChipsetInfo;
 use intel_features::probes::{self, Context};
 use intel_features::report::{FeatureAttention, Report};
 
@@ -217,6 +219,49 @@ fn text_output_includes_purpose_column() {
 }
 
 #[test]
+fn text_banner_reports_memory_channels_as_a_per_socket_limit() {
+    let report = Report::build(
+        HashMap::new(),
+        Some(arrow_lake_identity()),
+        None,
+        Privilege::User,
+    );
+    let text = report.render_text(intel_features::report::TextOptions {
+        color: false,
+        verbose: false,
+        hide_absent: true,
+    });
+    assert!(text.contains("Memory:    up to 2 channels per CPU socket"));
+}
+
+#[test]
+fn text_banner_reports_chipset_name_and_pci_identity() {
+    let system = SystemInfo {
+        vendor: "Intel Corporation".to_string(),
+        product: "S2600WFT".to_string(),
+        board: "S2600WFT".to_string(),
+        bios_vendor: String::new(),
+        bios_version: String::new(),
+        bios_date: String::new(),
+        chipset: Some(ChipsetInfo {
+            name: "C624 Series Chipset LPC/eSPI Controller".to_string(),
+            vendor_id: 0x8086,
+            device_id: 0xa1c3,
+            address: "0000:00:1f.0".to_string(),
+        }),
+    };
+    let report = Report::build(HashMap::new(), None, Some(system), Privilege::User);
+    let text = report.render_text(intel_features::report::TextOptions {
+        color: false,
+        verbose: false,
+        hide_absent: true,
+    });
+    assert!(text.contains(
+        "Chipset:   C624 Series Chipset LPC/eSPI Controller  (PCI 8086:a1c3 at 0000:00:1f.0)"
+    ));
+}
+
+#[test]
 fn expected_class_feature_missing_is_visible_and_red() {
     let mut results = HashMap::new();
     results.insert("npu", vec![Detection::new(Status::Absent, "pci")]);
@@ -327,5 +372,6 @@ fn arrow_lake_identity() -> Identity {
         p_cores: 8,
         e_cores: 16,
         microcode: None,
+        max_memory_channels: Some(2),
     }
 }

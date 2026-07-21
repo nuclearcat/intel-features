@@ -15,7 +15,8 @@ Nine independent probes provide traceable evidence for each result:
   reported. CPUs are taken from the process affinity allowance intersected with the
   online set. The banner shows physical P/E core counts (deduplicated from topology),
   successfully scanned logical CPUs, microcode revision, and a conservative
-  family/model lookup for the Intel processor codename, product generation, and market segment.
+  family/model lookup for the Intel processor codename, product generation, market segment,
+  and maximum memory channels per socket where the family/model answer is unambiguous.
 * **procfs** — reads `/proc/cpuinfo` flags to corroborate CPUID; the reporter prints a
   cross-check section for any silicon-vs-kernel disparity.
 * **linux-sysfs** — runtime state: SMT, `/dev/kvm`, TPM, intel_pstate/turbo,
@@ -29,6 +30,8 @@ Nine independent probes provide traceable evidence for each result:
 * **pci** — scans `/sys/bus/pci/devices` for Intel devices: chipset (PCH), iGPU, NPU,
   accelerators (DSA/IAA/QAT/DLB/GNA), CSME, NIC, Wi-Fi, audio, SMBus, SPI flash,
   Thunderbolt, VMD — matched by class / device-id / driver, enabled when a driver is bound.
+  The banner names the chipset from its enumerated LPC/eSPI PCI ID using the host `pci.ids`
+  database (with a built-in C620-series fallback), when that bridge is visible.
 * **acpi** — `/sys/firmware/acpi/tables` presence: VT-d (DMAR), S0ix (LPIT/s2idle),
   persistent memory (NFIT), CXL (CEDT), HMAT, HPET, NUMA (SRAT), WSMT, TPM 2.0.
 * **efi** — UEFI boot, Secure Boot / Setup Mode, and ESRT.

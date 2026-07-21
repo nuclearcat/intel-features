@@ -246,6 +246,11 @@ impl Report {
                     format!("{} logical CPU(s)", id.logical_cpus)
                 };
                 s.push_str(&format!("  Topology:  {topo}\n"));
+                if let Some(channels) = id.max_memory_channels {
+                    s.push_str(&format!(
+                        "  Memory:    up to {channels} channels per CPU socket\n"
+                    ));
+                }
                 if let Some(mc) = &id.microcode {
                     s.push_str(&format!("  Microcode: {mc}\n"));
                 }
@@ -261,6 +266,12 @@ impl Report {
                 .join(" ");
             if !product.is_empty() {
                 s.push_str(&format!("  System:    {product}  (board {})\n", sys.board));
+            }
+            if let Some(chipset) = &sys.chipset {
+                s.push_str(&format!(
+                    "  Chipset:   {}  (PCI {:04x}:{:04x} at {})\n",
+                    chipset.name, chipset.vendor_id, chipset.device_id, chipset.address
+                ));
             }
             if !sys.bios_version.is_empty() {
                 s.push_str(&format!(

@@ -17,6 +17,34 @@ const INTEL: u32 = 0x8086;
 
 pub struct PciProbe;
 
+/// Chipset identity obtained from the Intel ISA/LPC/eSPI bridge actually enumerated
+/// on the PCI bus.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ChipsetInfo {
+    pub name: String,
+    pub vendor_id: u16,
+    pub device_id: u16,
+    pub address: String,
+}
+
+/// Return the motherboard chipset/PCH when Linux exposes its Intel LPC/eSPI bridge.
+/// The descriptive name comes from the host's pci.ids database when available, with
+/// a small built-in fallback for C620-series server chipsets.
+pub fn chipset_info_with(ctx: &Context) -> Option<ChipsetInfo> {
+    let (mut devices, _) = scan_intel_devices(ctx).ok()?;
+    devices.sort_by(|a, b| a.address.cmp(&b.address));
+    let device = devices
+        .iter()
+        .find(|device| device.class_hi == 0x06 && device.subclass == 0x01)?;
+    Some(ChipsetInfo {
+        name: pci_device_name(ctx, device.device)
+            .unwrap_or_else(|| "Intel chipset (unrecognized model)".to_string()),
+        vendor_id: INTEL as u16,
+        device_id: device.device,
+        address: device.address.clone(),
+    })
+}
+
 impl Probe for PciProbe {
     fn name(&self) -> &'static str {
         SRC
@@ -40,6 +68,7 @@ impl Probe for PciProbe {
 
 /// One Intel PCI device, reduced to the fields we match on.
 struct PciDevice {
+    address: String,
     device: u16,
     class_hi: u8,
     subclass: u8,
@@ -130,7 +159,14 @@ fn evaluate(rule: &Rule, devices: &[PciDevice], complete: bool, ctx: &Context) -
         Status::Present
     };
 
-    let mut detail = format!("dev {:#06x}", best.device);
+    let mut detail = if rule.feature == "pch" {
+        match pci_device_name(ctx, best.device) {
+            Some(name) => format!("{name} (PCI 8086:{:04x})", best.device),
+            None => format!("Intel chipset (PCI 8086:{:04x})", best.device),
+        }
+    } else {
+        format!("dev {:#06x}", best.device)
+    };
     if let Some(drv) = &best.driver {
         detail.push_str(&format!(", driver {drv}"));
     }
@@ -208,6 +244,7 @@ fn scan_intel_devices(ctx: &Context) -> Result<(Vec<PciDevice>, bool), String> {
             }
         };
         out.push(PciDevice {
+            address: entry.file_name,
             device,
             class_hi: ((class >> 16) & 0xff) as u8,
             subclass: ((class >> 8) & 0xff) as u8,
@@ -216,6 +253,67 @@ fn scan_intel_devices(ctx: &Context) -> Result<(Vec<PciDevice>, bool), String> {
         });
     }
     Ok((out, complete))
+}
+
+const PCI_ID_DATABASES: &[&str] = &[
+    "/usr/share/hwdata/pci.ids",
+    "/usr/share/misc/pci.ids",
+    "/usr/share/pci.ids",
+];
+
+fn pci_device_name(ctx: &Context, device: u16) -> Option<String> {
+    for path in PCI_ID_DATABASES {
+        if let Ok(data) = ctx.reader.read_to_string(Path::new(path)) {
+            if let Some(name) = parse_pci_ids_name(&data, INTEL as u16, device) {
+                return Some(name);
+            }
+        }
+    }
+    c620_fallback_name(device).map(str::to_string)
+}
+
+/// Parse a top-level device entry from the standard pci.ids text format. Subsystem
+/// entries start with two tabs and are intentionally ignored.
+fn parse_pci_ids_name(data: &str, vendor: u16, device: u16) -> Option<String> {
+    let mut in_vendor = false;
+    for line in data.lines() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if !line.starts_with('\t') {
+            let mut fields = line.split_whitespace();
+            in_vendor = fields
+                .next()
+                .and_then(|id| u16::from_str_radix(id, 16).ok())
+                == Some(vendor);
+            continue;
+        }
+        if !in_vendor || line.starts_with("\t\t") {
+            continue;
+        }
+        let line = line.trim_start_matches('\t');
+        let Some((id, name)) = line.split_once(char::is_whitespace) else {
+            continue;
+        };
+        if u16::from_str_radix(id, 16).ok() == Some(device) {
+            let name = name.trim();
+            return (!name.is_empty()).then(|| name.to_string());
+        }
+    }
+    None
+}
+
+fn c620_fallback_name(device: u16) -> Option<&'static str> {
+    match device {
+        0xa1c1 => Some("C621 Series Chipset LPC/eSPI Controller"),
+        0xa1c2 => Some("C622 Series Chipset LPC/eSPI Controller"),
+        0xa1c3 => Some("C624 Series Chipset LPC/eSPI Controller"),
+        0xa1c4 => Some("C625 Series Chipset LPC/eSPI Controller"),
+        0xa1c5 => Some("C626 Series Chipset LPC/eSPI Controller"),
+        0xa1c6 => Some("C627 Series Chipset LPC/eSPI Controller"),
+        0xa1c7 => Some("C628 Series Chipset LPC/eSPI Controller"),
+        _ => None,
+    }
 }
 
 /// Read a `0x…`-formatted sysfs hex file.
@@ -232,6 +330,7 @@ mod tests {
 
     fn dev(class_hi: u8, subclass: u8, device: u16, driver: Option<&str>) -> PciDevice {
         PciDevice {
+            address: "0000:00:1f.0".to_string(),
             device,
             class_hi,
             subclass,
@@ -289,6 +388,24 @@ mod tests {
         assert_eq!(
             evaluate(rule("vmd"), &[], true, &ctx).status,
             Status::Absent
+        );
+    }
+
+    #[test]
+    fn parses_intel_device_but_not_subsystem_names() {
+        let ids = "8086  Intel Corporation\n\ta1c3  C624 Series Chipset LPC/eSPI Controller\n\t\t1234 5678  Board subsystem\n8087  Other vendor\n\ta1c3  Wrong device\n";
+        assert_eq!(
+            parse_pci_ids_name(ids, 0x8086, 0xa1c3).as_deref(),
+            Some("C624 Series Chipset LPC/eSPI Controller")
+        );
+        assert_eq!(parse_pci_ids_name(ids, 0x8086, 0x5678), None);
+    }
+
+    #[test]
+    fn c620_fallback_identifies_example_chipset() {
+        assert_eq!(
+            c620_fallback_name(0xa1c3),
+            Some("C624 Series Chipset LPC/eSPI Controller")
         );
     }
 }

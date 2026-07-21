@@ -50,6 +50,8 @@ pub struct SystemInfo {
     pub bios_vendor: String,
     pub bios_version: String,
     pub bios_date: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chipset: Option<crate::probes::pci::ChipsetInfo>,
 }
 
 pub fn system_info() -> Option<SystemInfo> {
@@ -69,7 +71,8 @@ pub fn system_info_with(ctx: &Context) -> Option<SystemInfo> {
     let product = id("product_name");
     let board = id("board_name");
     let bios_version = id("bios_version");
-    if vendor.is_empty() && product.is_empty() && bios_version.is_empty() {
+    let chipset = crate::probes::pci::chipset_info_with(ctx);
+    if vendor.is_empty() && product.is_empty() && bios_version.is_empty() && chipset.is_none() {
         return None;
     }
     Some(SystemInfo {
@@ -79,6 +82,7 @@ pub fn system_info_with(ctx: &Context) -> Option<SystemInfo> {
         bios_vendor: id("bios_vendor"),
         bios_version,
         bios_date: id("bios_date"),
+        chipset,
     })
 }
 

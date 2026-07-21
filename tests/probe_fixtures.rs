@@ -7,7 +7,7 @@ use intel_features::model::{Privilege, Status};
 use intel_features::probes::acpi::AcpiProbe;
 use intel_features::probes::firmware::{DmiProbe, EfiProbe};
 use intel_features::probes::msr::MsrProbe;
-use intel_features::probes::pci::PciProbe;
+use intel_features::probes::pci::{chipset_info_with, PciProbe};
 use intel_features::probes::procfs::ProcfsProbe;
 use intel_features::probes::sysfs::SysfsProbe;
 use intel_features::probes::{
@@ -169,6 +169,27 @@ fn partial_pci_enumeration_cannot_prove_absence() {
         ))
         .unwrap();
     assert_eq!(status(&empty, "igpu"), Status::Absent);
+}
+
+#[test]
+fn pci_lpc_bridge_identifies_c624_chipset() {
+    let root = "/sys/bus/pci/devices";
+    let dev = "/sys/bus/pci/devices/0000:00:1f.0";
+    let ctx = context(
+        MemoryReader::default()
+            .dir(root, &["0000:00:1f.0"])
+            .file(&format!("{dev}/vendor"), "0x8086\n")
+            .file(&format!("{dev}/device"), "0xa1c3\n")
+            .file(&format!("{dev}/class"), "0x060100\n"),
+    );
+
+    let chipset = chipset_info_with(&ctx).expect("C624 should be identified");
+    assert_eq!(chipset.device_id, 0xa1c3);
+    assert!(chipset.name.contains("C624"));
+
+    let findings = PciProbe.detect(&ctx).unwrap();
+    let pch = findings.iter().find(|(id, _)| *id == "pch").unwrap();
+    assert!(pch.1.detail.as_deref().unwrap().contains("C624"));
 }
 
 #[test]
