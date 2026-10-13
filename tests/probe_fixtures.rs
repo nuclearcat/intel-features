@@ -156,6 +156,22 @@ fn acpi_unavailable_differs_from_inspected_and_absent() {
 }
 
 #[test]
+fn acpi_detects_platform_tables_and_numbered_instances() {
+    let present = AcpiProbe
+        .detect(&context(MemoryReader::default().dir(
+            "/sys/firmware/acpi/tables",
+            &["NHLT", "MCFG", "PHAT", "FPDT", "BGRT1", "TPM2"],
+        )))
+        .unwrap();
+    assert_eq!(status(&present, "nhlt"), Status::Present);
+    assert_eq!(status(&present, "mcfg"), Status::Present);
+    assert_eq!(status(&present, "phat"), Status::Present);
+    assert_eq!(status(&present, "fpdt"), Status::Present);
+    assert_eq!(status(&present, "bgrt"), Status::Present);
+    assert_eq!(status(&present, "tpm"), Status::Present);
+}
+
+#[test]
 fn partial_pci_enumeration_cannot_prove_absence() {
     let partial = PciProbe
         .detect(&context(

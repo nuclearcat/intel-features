@@ -293,6 +293,8 @@ pub const FEATURES: &[FeatureDef] = &[
     defv("thunderbolt", "Thunderbolt / USB4", Platform, "Thunderbolt/USB4 controller"),
     defv("vmd", "VMD", Platform, "Volume Management Device (NVMe remap)"),
     defv("ipmi", "IPMI / BMC", Platform, "Baseboard management controller"),
+    def("nhlt", "NHLT (Audio DSP Table)", Platform, "Non-HD Audio Link Table for Smart Sound DSP / DMIC"),
+    def("mcfg", "PCIe ECAM (MCFG)", Platform, "PCI Express memory-mapped configuration space (ACPI MCFG)"),
     def("pmem", "Persistent Memory", Platform, "NVDIMM / Optane (ACPI NFIT)"),
     def("cxl", "CXL", Platform, "Compute Express Link (ACPI CEDT)"),
     def("hmat", "HMAT / Memory Tiering", Platform, "Heterogeneous memory attributes"),
@@ -308,6 +310,9 @@ pub const FEATURES: &[FeatureDef] = &[
     def("setup_mode", "Setup Mode", Firmware, "UEFI Secure Boot setup mode (keys not enrolled)"),
     def("esrt", "ESRT / Capsule Update", Firmware, "Firmware capsule update table (fwupd)"),
     def("wsmt", "WSMT (SMM mitigations)", Firmware, "Windows SMM Security Mitigation Table"),
+    def("phat", "PHAT (Platform Health)", Firmware, "Platform Health Assessment firmware telemetry table (ACPI PHAT)"),
+    def("fpdt", "FPDT (Boot Perf Table)", Firmware, "Firmware Performance Data Table (ACPI FPDT)"),
+    def("bgrt", "BGRT (Boot Graphics)", Firmware, "Boot Graphics Resource Table (ACPI BGRT)"),
 ];
 
 /// Feature with no kernel-flag mapping.

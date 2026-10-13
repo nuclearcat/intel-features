@@ -16,7 +16,8 @@ use crate::probes::{unavailable, Context, Probe, ProbeResult};
 const SRC: &str = "acpi";
 const TABLES: &str = "/sys/firmware/acpi/tables";
 const FEATURES: &[&str] = &[
-    "vt_d", "s0ix", "pmem", "cxl", "hmat", "hpet", "numa", "wsmt", "tpm",
+    "vt_d", "s0ix", "pmem", "cxl", "hmat", "hpet", "numa", "wsmt", "nhlt", "mcfg", "phat", "fpdt",
+    "bgrt", "tpm",
 ];
 
 pub struct AcpiProbe;
@@ -88,6 +89,11 @@ impl Probe for AcpiProbe {
             ("hpet", "HPET"),
             ("numa", "SRAT"),
             ("wsmt", "WSMT"),
+            ("nhlt", "NHLT"),
+            ("mcfg", "MCFG"),
+            ("phat", "PHAT"),
+            ("fpdt", "FPDT"),
+            ("bgrt", "BGRT"),
         ] {
             let det = if has(sig) {
                 Detection::with_detail(Status::Present, SRC, format!("ACPI {sig} table"))
@@ -131,8 +137,8 @@ impl Probe for AcpiProbe {
     }
 }
 
-/// Uppercase table signatures present (file names, sans the numeric SSDT suffixes we
-/// don't care about).
+/// Uppercase table signatures present (file names, plus the 4-byte base signature when
+/// Linux appends a numeric instance suffix such as `BGRT1` or `SSDT10`).
 fn table_signatures(ctx: &Context) -> Result<(HashSet<String>, bool), String> {
     let mut set = HashSet::new();
     let entries = ctx
@@ -143,7 +149,11 @@ fn table_signatures(ctx: &Context) -> Result<(HashSet<String>, bool), String> {
     for entry in entries {
         match entry {
             Ok(entry) => {
-                set.insert(entry.file_name.to_ascii_uppercase());
+                let upper = entry.file_name.to_ascii_uppercase();
+                if upper.len() > 4 && upper[4..].chars().all(|c| c.is_ascii_digit()) {
+                    set.insert(upper[..4].to_string());
+                }
+                set.insert(upper);
             }
             Err(_) => complete = false,
         }
