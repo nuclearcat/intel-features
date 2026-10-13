@@ -44,12 +44,15 @@ pub struct CpuidProbe;
 const FEATURES: &[&str] = &[
     "adx",
     "aes",
+    "aeskle",
     "amx_bf16",
     "amx_int8",
     "amx_tile",
     "arat",
+    "arch_capabilities",
     "arch_lbr",
     "arch_perfmon",
+    "art",
     "avx",
     "avx10",
     "avx2",
@@ -72,6 +75,7 @@ const FEATURES: &[&str] = &[
     "avx_vnni",
     "avx_vnni_int16",
     "avx_vnni_int8",
+    "bhi_ctrl",
     "bmi1",
     "bmi2",
     "bts",
@@ -85,31 +89,46 @@ const FEATURES: &[&str] = &[
     "clwb",
     "cmpxchg16b",
     "cmt",
+    "ddpd_u",
     "dts",
     "eist",
     "epb",
+    "erms",
     "f16c",
+    "flush_l1d",
     "fma",
     "fsgsbase",
+    "fsrc",
     "fsrm",
+    "fsrs",
+    "fzlrep_movsb",
     "gfni",
     "hdc",
+    "hfi",
     "hle",
     "hreset",
     "htt",
     "hwp",
     "hwp_activity_window",
     "hwp_epp",
+    "hwp_highest_perf_change",
     "hwp_notification",
     "hwp_package",
     "hybrid",
     "hypervisor",
+    "ibrs_ibpb",
     "intel_pt",
+    "invariant_tsc",
+    "invpcid",
+    "ipred_ctrl",
+    "keylocker",
     "lam",
     "lzcnt",
     "mba",
     "mbm_local",
     "mbm_total",
+    "mcdt_no",
+    "md_clear",
     "monitor",
     "movbe",
     "movdir64b",
@@ -117,12 +136,16 @@ const FEATURES: &[&str] = &[
     "mpx",
     "nx",
     "ospke",
+    "pcid",
     "pclmulqdq",
+    "pconfig",
     "pdcm",
+    "pdpe1gb",
     "pku",
     "pln",
     "popcnt",
     "prefetchi",
+    "psfd",
     "ptm",
     "ptwrite",
     "rdpid",
@@ -130,7 +153,10 @@ const FEATURES: &[&str] = &[
     "rdseed",
     "rdt_a",
     "rdt_m",
+    "rdtscp",
+    "rrsba_ctrl",
     "rtm",
+    "sdbg",
     "serialize",
     "sgx",
     "sgx_lc",
@@ -138,14 +164,18 @@ const FEATURES: &[&str] = &[
     "smap",
     "smep",
     "smx",
+    "ssbd",
     "sse",
     "sse2",
     "sse3",
     "sse4_1",
     "sse4_2",
     "ssse3",
+    "stibp",
+    "thread_director",
     "tm2",
     "tme",
+    "tsc_adjust",
     "tsc_deadline",
     "turbo",
     "turbo3",
@@ -155,6 +185,8 @@ const FEATURES: &[&str] = &[
     "vpclmulqdq",
     "waitpkg",
     "x2apic",
+    "xfd",
+    "xgetbv1",
     "xsave",
     "xsavec",
     "xsaveopt",
@@ -349,6 +381,9 @@ fn scan_core(logical_cpu: u32, ctx: &Context) -> CoreScan {
     push("tsc_deadline", f(|i| i.has_tsc_deadline()), "leaf 1");
     push("pdcm", f(|i| i.has_pdcm()), "leaf 1");
     push("bts", f(|i| i.has_ds()), "leaf 1 (DS)");
+    let (_, _, l1c, _) = cpuid(1, 0);
+    push("sdbg", bit(l1c, 11), "leaf 1:ECX[11]");
+    push("pcid", bit(l1c, 17), "leaf 1:ECX[17]");
 
     // ---- Leaf 7/0: extended features ------------------------------------------------
     let ef = id.get_extended_feature_info();
@@ -414,15 +449,55 @@ fn scan_core(logical_cpu: u32, ctx: &Context) -> CoreScan {
     push("rdt_m", e(|i| i.has_rdtm()), "leaf 7");
     push("rdt_a", e(|i| i.has_rdta()), "leaf 7");
 
-    // Leaf 7 bits raw-cpuid does not expose — read directly.
-    let (_, _, l7c, l7d) = cpuid(7, 0);
+    // Leaf 7.0/7.1/7.2 bits read directly.
+    let (l7_max_sub, l7b, l7c, l7d) = if max_basic >= 7 {
+        cpuid(7, 0)
+    } else {
+        (0, 0, 0, 0)
+    };
+    push("tsc_adjust", bit(l7b, 1), "leaf 7:EBX[1]");
+    push("erms", bit(l7b, 9), "leaf 7:EBX[9]");
+    push("invpcid", bit(l7b, 10), "leaf 7:EBX[10]");
+    push("keylocker", bit(l7c, 23), "leaf 7:ECX[23]");
     push("movdiri", bit(l7c, 27), "leaf 7:ECX[27]");
     push("movdir64b", bit(l7c, 28), "leaf 7:ECX[28]");
     push("fsrm", bit(l7d, 4), "leaf 7:EDX[4]");
+    push("md_clear", bit(l7d, 10), "leaf 7:EDX[10]");
     push("serialize", bit(l7d, 14), "leaf 7:EDX[14]");
     push("hybrid", bit(l7d, 15), "leaf 7:EDX[15]");
+    push("pconfig", bit(l7d, 18), "leaf 7:EDX[18]");
     push("arch_lbr", bit(l7d, 19), "leaf 7:EDX[19]");
     push("cet_ibt", bit(l7d, 20), "leaf 7:EDX[20]");
+    push("ibrs_ibpb", bit(l7d, 26), "leaf 7:EDX[26]");
+    push("stibp", bit(l7d, 27), "leaf 7:EDX[27]");
+    push("flush_l1d", bit(l7d, 28), "leaf 7:EDX[28]");
+    push("arch_capabilities", bit(l7d, 29), "leaf 7:EDX[29]");
+    push("ssbd", bit(l7d, 31), "leaf 7:EDX[31]");
+
+    let l7_1a = if max_basic >= 7 && l7_max_sub >= 1 {
+        cpuid(7, 1).0
+    } else {
+        0
+    };
+    push("fsrs", bit(l7_1a, 10), "leaf 7.1:EAX[10]");
+    push("fzlrep_movsb", bit(l7_1a, 11), "leaf 7.1:EAX[11]");
+    push("fsrc", bit(l7_1a, 12), "leaf 7.1:EAX[12]");
+
+    let l7_2d = if max_basic >= 7 && l7_max_sub >= 2 {
+        cpuid(7, 2).3
+    } else {
+        0
+    };
+    push("psfd", bit(l7_2d, 0), "leaf 7.2:EDX[0]");
+    push("ipred_ctrl", bit(l7_2d, 1), "leaf 7.2:EDX[1]");
+    push("rrsba_ctrl", bit(l7_2d, 2), "leaf 7.2:EDX[2]");
+    push("ddpd_u", bit(l7_2d, 3), "leaf 7.2:EDX[3]");
+    push("bhi_ctrl", bit(l7_2d, 4), "leaf 7.2:EDX[4]");
+    push("mcdt_no", bit(l7_2d, 7), "leaf 7.2:EDX[7]");
+
+    // ---- Leaf 0x19: Key Locker details ----------------------------------------------
+    let aeskle = max_basic >= 0x19 && bit(cpuid(0x19, 0).1, 0);
+    push("aeskle", aeskle, "leaf 0x19:EBX[0]");
 
     // ---- Leaf 6: thermal & power ----------------------------------------------------
     let tp = id.get_thermal_power_info();
@@ -448,6 +523,10 @@ fn scan_core(logical_cpu: u32, ctx: &Context) -> CoreScan {
         t(|i| i.has_hwp_package_level_request()),
         "leaf 6",
     );
+    let l6a = if max_basic >= 6 { cpuid(6, 0).0 } else { 0 };
+    push("hwp_highest_perf_change", bit(l6a, 15), "leaf 6:EAX[15]");
+    push("hfi", bit(l6a, 19), "leaf 6:EAX[19]");
+    push("thread_director", bit(l6a, 23), "leaf 6:EAX[23]");
     push("turbo", t(|i| i.has_turbo_boost()), "leaf 6");
     push("turbo3", t(|i| i.has_turbo_boost3()), "leaf 6");
     push("arat", t(|i| i.has_arat()), "leaf 6");
@@ -474,8 +553,12 @@ fn scan_core(logical_cpu: u32, ctx: &Context) -> CoreScan {
         xs.as_ref().map(|i| i.has_xsaves_xrstors()).unwrap_or(false),
         "leaf 0xD",
     );
+    let ld_1a = if max_basic >= 0xd { cpuid(0xd, 1).0 } else { 0 };
+    push("xgetbv1", bit(ld_1a, 2), "leaf 0xD.1:EAX[2]");
+    push("xfd", bit(ld_1a, 4), "leaf 0xD.1:EAX[4]");
 
-    // ---- Extended leaf 0x80000001 --------------------------------------------------
+    // ---- Extended leaves 0x80000001 / 0x80000007 -----------------------------------
+    let max_ext = cpuid(0x8000_0000, 0).0;
     let epi = id.get_extended_processor_and_feature_identifiers();
     push(
         "nx",
@@ -489,6 +572,27 @@ fn scan_core(logical_cpu: u32, ctx: &Context) -> CoreScan {
         epi.as_ref().map(|i| i.has_lzcnt()).unwrap_or(false),
         "ext leaf 1",
     );
+    push(
+        "pdpe1gb",
+        epi.as_ref().map(|i| i.has_1gib_pages()).unwrap_or(false),
+        "ext leaf 1",
+    );
+    push(
+        "rdtscp",
+        epi.as_ref().map(|i| i.has_rdtscp()).unwrap_or(false),
+        "ext leaf 1",
+    );
+    let inv_tsc = max_ext >= 0x8000_0007 && bit(cpuid(0x8000_0007, 0).3, 8);
+    push("invariant_tsc", inv_tsc, "ext leaf 7:EDX[8]");
+
+    // ---- Leaf 0x15: Always-Running Timer (ART) crystal clock ratio -----------------
+    let art = if max_basic >= 0x15 {
+        let (denom, numer, _, _) = cpuid(0x15, 0);
+        denom != 0 && numer != 0
+    } else {
+        false
+    };
+    push("art", art, "leaf 0x15");
 
     // ---- Leaf 0xA: architectural PMU ------------------------------------------------
     let perfmon = id
