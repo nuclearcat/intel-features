@@ -83,8 +83,10 @@ pub fn lookup(vendor: &str, family: u32, model: u32) -> Option<CpuModelInfo> {
             "Core with Intel Hybrid Technology",
             "mobile client",
         ),
-        (6, 0x97 | 0x9a) => info("Alder Lake", "12th Gen Core", "client"),
-        (6, 0xb7 | 0xba | 0xbf) => info("Raptor Lake", "13th–14th Gen Core", "client"),
+        (6, 0x97) => info("Alder Lake", "12th Gen Core", "client"),
+        (6, 0x9a) => info("Alder Lake", "12th Gen Core", "mobile client"),
+        (6, 0xb7 | 0xbf) => info("Raptor Lake", "13th–14th Gen Core", "client"),
+        (6, 0xba) => info("Raptor Lake", "13th–14th Gen Core", "mobile client"),
         (6, 0xaa | 0xac) => info("Meteor Lake", "Core Ultra Series 1", "mobile client"),
         (6, 0xb5 | 0xc5 | 0xc6) => info("Arrow Lake", "Core Ultra Series 2", "client"),
         (6, 0xbd) => info("Lunar Lake", "Core Ultra Series 2", "mobile client"),
@@ -261,6 +263,14 @@ mod tests {
         );
         assert_eq!(
             feature_expectation("GenuineIntel", 6, 0xc6, "igpu"),
+            Some(ClassExpectation::Possible)
+        );
+        assert_eq!(
+            lookup("GenuineIntel", 6, 0xba).unwrap().segment,
+            "mobile client"
+        );
+        assert_eq!(
+            feature_expectation("GenuineIntel", 6, 0xba, "s0ix"),
             Some(ClassExpectation::Possible)
         );
         assert_eq!(feature_expectation("GenuineIntel", 6, 0x3c, "npu"), None);
