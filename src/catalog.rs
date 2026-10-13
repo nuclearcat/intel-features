@@ -224,6 +224,9 @@ pub const FEATURES: &[FeatureDef] = &[
     // Runtime driver/state (sysfs / pci)
     def("intel_pstate", "intel_pstate driver", Power, "P-state governor driver active"),
     def("intel_idle", "intel_idle driver", Power, "C-state idle driver active"),
+    def("intel_uncore_freq", "Uncore Frequency", Power, "Uncore frequency scaling driver active (intel_uncore_frequency)"),
+    def("acpi_cppc", "ACPI CPPC", Power, "Collaborative Processor Performance Control registers"),
+    def("umwait_control", "UMWAIT OS Control", Power, "Kernel C0.2 / max-time policy for UMONITOR/UMWAIT/TPAUSE"),
     def("rapl", "RAPL powercap", Power, "Running Average Power Limit domains exposed"),
     defv("dptf", "DPTF / IPF Thermal", Power, "Dynamic Platform & Thermal Framework processor participant"),
     // MSR-derived values (root)
@@ -286,14 +289,16 @@ pub const FEATURES: &[FeatureDef] = &[
     defv("lpss", "LPSS Serial IO", Platform, "Low Power Subsystem I2C/SPI/UART controller (intel-lpss)"),
     defv("smbus", "SMBus", Platform, "SMBus/i2c host controller"),
     defv("spi_flash", "SPI Flash Controller", Platform, "BIOS/SPI flash controller"),
+    defv("itco_wdt", "iTCO Watchdog", Platform, "Intel TCO hardware watchdog timer device"),
     defv("thunderbolt", "Thunderbolt / USB4", Platform, "Thunderbolt/USB4 controller"),
     defv("vmd", "VMD", Platform, "Volume Management Device (NVMe remap)"),
     defv("ipmi", "IPMI / BMC", Platform, "Baseboard management controller"),
     def("pmem", "Persistent Memory", Platform, "NVDIMM / Optane (ACPI NFIT)"),
     def("cxl", "CXL", Platform, "Compute Express Link (ACPI CEDT)"),
     def("hmat", "HMAT / Memory Tiering", Platform, "Heterogeneous memory attributes"),
-    defv("memory_ecc", "Memory ECC", Platform, "Error-correcting memory (SMBIOS type 16)"),
-    defv("memory_dimms", "Installed Memory", Platform, "Populated DIMMs (SMBIOS type 17)"),
+    defv("edac", "EDAC Memory Controller", Platform, "Kernel Error Detection and Correction memory driver"),
+    defv("memory_ecc", "Memory ECC", Platform, "Error-correcting memory (SMBIOS type 16 / EDAC)"),
+    defv("memory_dimms", "Installed Memory", Platform, "Populated DIMMs (SMBIOS type 17 / EDAC)"),
     // ================= Platform & Firmware ===========================================
     def("msr", "MSR access", Firmware, "/dev/cpu/*/msr readable (root + msr module)"),
     def("feature_control_locked", "IA32_FEATURE_CONTROL lock", Firmware, "Feature-control MSR locked by firmware"),

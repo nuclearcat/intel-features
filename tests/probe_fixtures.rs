@@ -336,3 +336,69 @@ fn module_loading_requires_explicit_root_opt_in_and_runs_once() {
     MsrProbe.detect(&root_opt).unwrap();
     assert_eq!(*msr.loads.lock().unwrap(), 1);
 }
+
+#[test]
+fn sysfs_detects_edac_memory_uncore_cppc_and_umwait() {
+    let reader = MemoryReader::default()
+        .dir("/sys/devices/system/edac/mc", &["mc0", "mc1"])
+        .file(
+            "/sys/devices/system/edac/mc/mc0/mc_name",
+            "Intel_client_SoC MC#0\n",
+        )
+        .dir("/sys/devices/system/edac/mc/mc0", &["dimm0"])
+        .file("/sys/devices/system/edac/mc/mc0/dimm0/size", "16384\n")
+        .file(
+            "/sys/devices/system/edac/mc/mc0/dimm0/dimm_mem_type",
+            "Unbuffered-DDR4\n",
+        )
+        .file(
+            "/sys/devices/system/edac/mc/mc0/dimm0/dimm_edac_mode",
+            "SECDED\n",
+        )
+        .file(
+            "/sys/devices/system/edac/mc/mc1/mc_name",
+            "Intel_client_SoC MC#1\n",
+        )
+        .dir("/sys/devices/system/edac/mc/mc1", &["dimm0"])
+        .file("/sys/devices/system/edac/mc/mc1/dimm0/size", "16384\n")
+        .file(
+            "/sys/devices/system/edac/mc/mc1/dimm0/dimm_mem_type",
+            "Unbuffered-DDR4\n",
+        )
+        .file(
+            "/sys/devices/system/edac/mc/mc1/dimm0/dimm_edac_mode",
+            "SECDED\n",
+        )
+        .dir(
+            "/sys/devices/system/cpu/intel_uncore_frequency",
+            &["package_00_die_00"],
+        )
+        .file(
+            "/sys/devices/system/cpu/intel_uncore_frequency/package_00_die_00/min_freq_khz",
+            "400000\n",
+        )
+        .file(
+            "/sys/devices/system/cpu/intel_uncore_frequency/package_00_die_00/max_freq_khz",
+            "4700000\n",
+        )
+        .dir("/sys/devices/system/cpu/cpu0/acpi_cppc", &[])
+        .file(
+            "/sys/devices/system/cpu/cpu0/acpi_cppc/highest_perf",
+            "196\n",
+        )
+        .dir("/sys/devices/system/cpu/umwait_control", &[])
+        .file("/sys/devices/system/cpu/umwait_control/enable_c02", "1\n")
+        .file(
+            "/sys/devices/system/cpu/umwait_control/max_time",
+            "100000\n",
+        );
+
+    let findings = SysfsProbe.detect(&context(reader)).unwrap();
+    assert_eq!(status(&findings, "edac"), Status::Enabled);
+    assert_eq!(status(&findings, "memory_ecc"), Status::Enabled);
+    assert_eq!(status(&findings, "memory_dimms"), Status::Present);
+    assert_eq!(status(&findings, "intel_uncore_freq"), Status::Enabled);
+    assert_eq!(status(&findings, "acpi_cppc"), Status::Present);
+    assert_eq!(status(&findings, "umwait_control"), Status::Enabled);
+}
+
