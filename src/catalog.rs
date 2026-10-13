@@ -221,10 +221,11 @@ pub const FEATURES: &[FeatureDef] = &[
     defk("epb", "Energy Perf Bias", Power, "IA32_ENERGY_PERF_BIAS", "epb"),
     defk("tm2", "Thermal Monitor 2", Power, "TM2 throttling", "tm2"),
     defk("pln", "Power Limit Notification", Power, "PLN interrupt", "pln"),
-    // Runtime driver/state (sysfs)
+    // Runtime driver/state (sysfs / pci)
     def("intel_pstate", "intel_pstate driver", Power, "P-state governor driver active"),
     def("intel_idle", "intel_idle driver", Power, "C-state idle driver active"),
     def("rapl", "RAPL powercap", Power, "Running Average Power Limit domains exposed"),
+    defv("dptf", "DPTF / IPF Thermal", Power, "Dynamic Platform & Thermal Framework processor participant"),
     // MSR-derived values (root)
     defv("tjmax", "TjMax", Power, "Thermal throttle temperature (MSR 0x1A2)"),
     defv("pkg_tdp", "Package TDP", Power, "Thermal design power (MSR 0x614)"),
@@ -253,6 +254,7 @@ pub const FEATURES: &[FeatureDef] = &[
     defk("intel_pt", "Intel PT", Perf, "Processor Trace", "intel_pt"),
     defk("arch_lbr", "Arch LBR", Perf, "Architectural last-branch records", "arch_lbr"),
     def("ptwrite", "PTWRITE", Perf, "Write to PT stream"),
+    defv("vsec_pmt", "PMT / Crashlog (VSEC)", Perf, "Platform Monitoring Technology telemetry & crashlog (intel_vsec)"),
     // ================= Resource Director Technology ==================================
     defk("rdt_m", "RDT Monitoring", Rdt, "Cache/bandwidth monitoring (leaf 0xF)", "cqm"),
     def("cmt", "CMT", Rdt, "Cache occupancy (L3) monitoring"),
@@ -279,6 +281,9 @@ pub const FEATURES: &[FeatureDef] = &[
     defv("wifi", "Wi-Fi", Platform, "Intel wireless (CNVi/discrete)"),
     defv("bluetooth", "Bluetooth", Platform, "Bluetooth controller"),
     defv("audio", "HD Audio / SST", Platform, "Audio DSP / codec"),
+    defv("usb_xhci", "USB xHCI Controller", Platform, "Integrated Intel USB 3.x host controller"),
+    defv("sata_ahci", "SATA / AHCI Controller", Platform, "Integrated Intel SATA AHCI controller"),
+    defv("lpss", "LPSS Serial IO", Platform, "Low Power Subsystem I2C/SPI/UART controller (intel-lpss)"),
     defv("smbus", "SMBus", Platform, "SMBus/i2c host controller"),
     defv("spi_flash", "SPI Flash Controller", Platform, "BIOS/SPI flash controller"),
     defv("thunderbolt", "Thunderbolt / USB4", Platform, "Thunderbolt/USB4 controller"),

@@ -97,12 +97,17 @@ const RULES: &[Rule] = &[
     Rule { feature: "iaa",  classes: &[], devices: &[0x0cfe], drivers: &[], node: None },
     Rule { feature: "qat",  classes: &[], devices: &[0x4940, 0x4942, 0x4944, 0x4946, 0x37c8, 0x19e2, 0x0435], drivers: &["4xxx", "qat_4xxx", "c6xx", "dh895xcc"], node: None },
     Rule { feature: "dlb",  classes: &[], devices: &[0x2710, 0x2711], drivers: &["dlb2"], node: None },
-    // Chipset & platform devices
+    // Power, telemetry & platform devices
+    Rule { feature: "dptf",        classes: &[], devices: &[0x1903, 0x461d, 0x8a03, 0x9a03, 0xa71d, 0x7d03, 0xad03, 0x641d, 0xb01d], drivers: &["proc_thermal_pci", "proc_thermal"], node: None },
+    Rule { feature: "vsec_pmt",    classes: &[], devices: &[0x467d, 0x9a0d, 0xa77d, 0x7d0d, 0xad0d, 0x647d, 0xb07d], drivers: &["intel_vsec"], node: Some("/sys/bus/auxiliary/devices/intel_vsec.telemetry.0") },
     Rule { feature: "pch",         classes: &[(0x06, 0x01)], devices: &[], drivers: &[], node: None },
     Rule { feature: "csme",        classes: &[(0x07, 0x80)], devices: &[], drivers: &["mei_me"], node: Some("/dev/mei0") },
     Rule { feature: "ethernet",    classes: &[(0x02, 0x00)], devices: &[], drivers: &["igc", "e1000e", "igb", "ixgbe", "i40e", "ice"], node: None },
     Rule { feature: "wifi",        classes: &[(0x02, 0x80)], devices: &[], drivers: &["iwlwifi"], node: None },
     Rule { feature: "audio",       classes: &[(0x04, 0x01), (0x04, 0x03)], devices: &[], drivers: &["snd_hda_intel", "snd_soc_avs", "snd_soc_skl", "sof-audio-pci", "sof-audio-pci-intel-apl", "sof-audio-pci-intel-cnl", "sof-audio-pci-intel-icl", "sof-audio-pci-intel-tgl", "sof-audio-pci-intel-mtl", "sof-audio-pci-intel-lnl"], node: None },
+    Rule { feature: "usb_xhci",    classes: &[(0x0c, 0x03)], devices: &[], drivers: &["xhci_hcd"], node: None },
+    Rule { feature: "sata_ahci",   classes: &[(0x01, 0x06)], devices: &[], drivers: &["ahci"], node: None },
+    Rule { feature: "lpss",        classes: &[], devices: &[0x51e8, 0x51e9, 0x51ea, 0x51eb, 0x7a4c, 0x7a4d, 0x7e78, 0x7e79], drivers: &["intel-lpss"], node: None },
     Rule { feature: "smbus",       classes: &[(0x0c, 0x05)], devices: &[], drivers: &["i801_smbus"], node: None },
     Rule { feature: "spi_flash",   classes: &[], devices: &[], drivers: &["intel-spi"], node: None },
     Rule { feature: "thunderbolt", classes: &[], devices: &[], drivers: &["thunderbolt"], node: Some("/sys/bus/thunderbolt") },
@@ -117,11 +122,16 @@ const PCI_FEATURES: &[&str] = &[
     "iaa",
     "qat",
     "dlb",
+    "dptf",
+    "vsec_pmt",
     "pch",
     "csme",
     "ethernet",
     "wifi",
     "audio",
+    "usb_xhci",
+    "sata_ahci",
+    "lpss",
     "smbus",
     "spi_flash",
     "thunderbolt",
@@ -419,5 +429,33 @@ mod tests {
             rule("audio")
         ));
         assert!(matches(&dev(0x04, 0x03, 0x51ca, None), rule("audio")));
+    }
+
+    #[test]
+    fn matches_dptf_vsec_lpss_xhci_and_ahci() {
+        assert!(matches(
+            &dev(0x11, 0x80, 0xa71d, Some("proc_thermal_pci")),
+            rule("dptf")
+        ));
+        assert!(matches(
+            &dev(0x11, 0x80, 0xa77d, Some("intel_vsec")),
+            rule("vsec_pmt")
+        ));
+        assert!(matches(
+            &dev(0x0c, 0x80, 0x51e8, Some("intel-lpss")),
+            rule("lpss")
+        ));
+        assert!(!matches(
+            &dev(0x0c, 0x80, 0x51a4, Some("intel-spi")),
+            rule("lpss")
+        ));
+        assert!(matches(
+            &dev(0x0c, 0x03, 0x51ed, Some("xhci_hcd")),
+            rule("usb_xhci")
+        ));
+        assert!(matches(
+            &dev(0x01, 0x06, 0x51d3, Some("ahci")),
+            rule("sata_ahci")
+        ));
     }
 }
