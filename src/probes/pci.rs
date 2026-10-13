@@ -76,11 +76,11 @@ struct PciDevice {
     driver_known: bool,
 }
 
-/// A feature's match criteria. A device matches if *any* criterion matches: its class
-/// (subclass `0xff` = any), its device id, or its bound driver.
+/// A feature's match criteria. A device matches if *any* criterion matches: any of its
+/// classes (subclass `0xff` = any), its device id, or its bound driver.
 struct Rule {
     feature: &'static str,
-    class: Option<(u8, u8)>,
+    classes: &'static [(u8, u8)],
     devices: &'static [u16],
     drivers: &'static [&'static str],
     /// Corroborating node appended to the detail when present.
@@ -90,23 +90,23 @@ struct Rule {
 #[rustfmt::skip]
 const RULES: &[Rule] = &[
     // On-SoC accelerators & engines
-    Rule { feature: "igpu", class: Some((0x03, 0xff)), devices: &[], drivers: &["i915", "xe"], node: None },
-    Rule { feature: "npu",  class: Some((0x12, 0xff)), devices: &[0xad1d, 0x7d1d, 0x643e, 0xb03e], drivers: &["intel_vpu"], node: Some("/dev/accel/accel0") },
-    Rule { feature: "gna",  class: None, devices: &[0x5a11, 0x8a11, 0x9a11, 0x4511, 0x51e4, 0x54e4], drivers: &["intel_gna"], node: None },
-    Rule { feature: "dsa",  class: None, devices: &[0x0b25], drivers: &[], node: None },
-    Rule { feature: "iaa",  class: None, devices: &[0x0cfe], drivers: &[], node: None },
-    Rule { feature: "qat",  class: None, devices: &[0x4940, 0x4942, 0x4944, 0x4946, 0x37c8, 0x19e2, 0x0435], drivers: &["4xxx", "qat_4xxx", "c6xx", "dh895xcc"], node: None },
-    Rule { feature: "dlb",  class: None, devices: &[0x2710, 0x2711], drivers: &["dlb2"], node: None },
+    Rule { feature: "igpu", classes: &[(0x03, 0xff)], devices: &[], drivers: &["i915", "xe"], node: None },
+    Rule { feature: "npu",  classes: &[(0x12, 0xff)], devices: &[0xad1d, 0x7d1d, 0x643e, 0xb03e], drivers: &["intel_vpu"], node: Some("/dev/accel/accel0") },
+    Rule { feature: "gna",  classes: &[], devices: &[0x3190, 0x4511, 0x4e11, 0x5a11, 0x8a11, 0x9a11, 0x464f, 0x467e, 0xa74f, 0x51e4, 0x54e4, 0x7e4c, 0x774c, 0xae4c], drivers: &["intel_gna"], node: None },
+    Rule { feature: "dsa",  classes: &[], devices: &[0x0b25], drivers: &[], node: None },
+    Rule { feature: "iaa",  classes: &[], devices: &[0x0cfe], drivers: &[], node: None },
+    Rule { feature: "qat",  classes: &[], devices: &[0x4940, 0x4942, 0x4944, 0x4946, 0x37c8, 0x19e2, 0x0435], drivers: &["4xxx", "qat_4xxx", "c6xx", "dh895xcc"], node: None },
+    Rule { feature: "dlb",  classes: &[], devices: &[0x2710, 0x2711], drivers: &["dlb2"], node: None },
     // Chipset & platform devices
-    Rule { feature: "pch",         class: Some((0x06, 0x01)), devices: &[], drivers: &[], node: None },
-    Rule { feature: "csme",        class: Some((0x07, 0x80)), devices: &[], drivers: &["mei_me"], node: Some("/dev/mei0") },
-    Rule { feature: "ethernet",    class: Some((0x02, 0x00)), devices: &[], drivers: &["igc", "e1000e", "igb", "ixgbe", "i40e", "ice"], node: None },
-    Rule { feature: "wifi",        class: Some((0x02, 0x80)), devices: &[], drivers: &["iwlwifi"], node: None },
-    Rule { feature: "audio",       class: Some((0x04, 0x03)), devices: &[], drivers: &[], node: None },
-    Rule { feature: "smbus",       class: Some((0x0c, 0x05)), devices: &[], drivers: &["i801_smbus"], node: None },
-    Rule { feature: "spi_flash",   class: None, devices: &[], drivers: &["intel-spi"], node: None },
-    Rule { feature: "thunderbolt", class: None, devices: &[], drivers: &["thunderbolt"], node: Some("/sys/bus/thunderbolt") },
-    Rule { feature: "vmd",         class: None, devices: &[0x9a0b, 0x467f, 0xa77f, 0x7d0b, 0xad0b, 0xb60b], drivers: &["vmd"], node: None },
+    Rule { feature: "pch",         classes: &[(0x06, 0x01)], devices: &[], drivers: &[], node: None },
+    Rule { feature: "csme",        classes: &[(0x07, 0x80)], devices: &[], drivers: &["mei_me"], node: Some("/dev/mei0") },
+    Rule { feature: "ethernet",    classes: &[(0x02, 0x00)], devices: &[], drivers: &["igc", "e1000e", "igb", "ixgbe", "i40e", "ice"], node: None },
+    Rule { feature: "wifi",        classes: &[(0x02, 0x80)], devices: &[], drivers: &["iwlwifi"], node: None },
+    Rule { feature: "audio",       classes: &[(0x04, 0x01), (0x04, 0x03)], devices: &[], drivers: &["snd_hda_intel", "snd_soc_avs", "snd_soc_skl", "sof-audio-pci", "sof-audio-pci-intel-apl", "sof-audio-pci-intel-cnl", "sof-audio-pci-intel-icl", "sof-audio-pci-intel-tgl", "sof-audio-pci-intel-mtl", "sof-audio-pci-intel-lnl"], node: None },
+    Rule { feature: "smbus",       classes: &[(0x0c, 0x05)], devices: &[], drivers: &["i801_smbus"], node: None },
+    Rule { feature: "spi_flash",   classes: &[], devices: &[], drivers: &["intel-spi"], node: None },
+    Rule { feature: "thunderbolt", classes: &[], devices: &[], drivers: &["thunderbolt"], node: Some("/sys/bus/thunderbolt") },
+    Rule { feature: "vmd",         classes: &[], devices: &[0x9a0b, 0x467f, 0xa77f, 0x7d0b, 0xad0b, 0xb60b], drivers: &["vmd"], node: None },
 ];
 
 const PCI_FEATURES: &[&str] = &[
@@ -182,10 +182,12 @@ fn evaluate(rule: &Rule, devices: &[PciDevice], complete: bool, ctx: &Context) -
 }
 
 fn matches(dev: &PciDevice, rule: &Rule) -> bool {
-    if let Some((class, sub)) = rule.class {
-        if dev.class_hi == class && (sub == 0xff || dev.subclass == sub) {
-            return true;
-        }
+    if rule
+        .classes
+        .iter()
+        .any(|&(class, sub)| dev.class_hi == class && (sub == 0xff || dev.subclass == sub))
+    {
+        return true;
     }
     if rule.devices.contains(&dev.device) {
         return true;
@@ -407,5 +409,15 @@ mod tests {
             c620_fallback_name(0xa1c3),
             Some("C624 Series Chipset LPC/eSPI Controller")
         );
+    }
+
+    #[test]
+    fn matches_raptor_lake_gna_and_cavs_sof_audio() {
+        assert!(matches(&dev(0x08, 0x80, 0xa74f, None), rule("gna")));
+        assert!(matches(
+            &dev(0x04, 0x01, 0x51ca, Some("sof-audio-pci-intel-tgl")),
+            rule("audio")
+        ));
+        assert!(matches(&dev(0x04, 0x03, 0x51ca, None), rule("audio")));
     }
 }
