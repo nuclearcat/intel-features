@@ -50,8 +50,19 @@ const FEATURES: &[&str] = &[
     "apicv",
     "vmcs_shadow",
     "posted_intr",
+    "vnmi",
+    "preemption_timer",
+    "flexpriority",
+    "mtf",
+    "ple",
+    "ept_violation_ve",
+    "ept_mode_based_exec",
+    "tsc_scaling",
+    "usr_wait_pause",
     "ept_ad",
     "ept_1gb",
+    "ept_x_only",
+    "invvpid",
     "tjmax",
     "pkg_tdp",
     "pkg_power_limit",
@@ -255,13 +266,26 @@ fn feature_control(msr: &dyn MsrAccess, out: &mut Findings) {
     }
 }
 
-// ---- VMX capability MSRs (0x481 / 0x48B / 0x48C) ------------------------------------
+// ---- VMX capability MSRs (0x481 / 0x482 / 0x48B / 0x48C) ----------------------------
 
 fn vmx_capabilities(msr: &dyn MsrAccess, out: &mut Findings) {
     // IA32_VMX_BASIC (0x480) only reads when VMX is supported; use it as the gate so we
     // don't #GP on non-VMX parts.
     if read(msr, 0x480).is_err() {
         return;
+    }
+
+    // Primary processor-based controls (0x482): allowed-1 bits are in the high dword.
+    if let Ok(v) = read(msr, 0x482) {
+        let avail = |b: u32| present(bit(v, 32 + b));
+        out.push((
+            "flexpriority",
+            Detection::with_detail(avail(21), SRC, "VMX_PROCBASED_CTLS[21]"),
+        ));
+        out.push((
+            "mtf",
+            Detection::with_detail(avail(27), SRC, "VMX_PROCBASED_CTLS[27]"),
+        ));
     }
 
     // Secondary processor-based controls (0x48B): a control is *available* when its bit
@@ -285,28 +309,65 @@ fn vmx_capabilities(msr: &dyn MsrAccess, out: &mut Findings) {
             Detection::with_detail(avail(9), SRC, "virtual-interrupt delivery"),
         ));
         out.push((
+            "ple",
+            Detection::with_detail(avail(10), SRC, "VMX_PROCBASED_CTLS2[10]"),
+        ));
+        out.push((
             "vmcs_shadow",
             Detection::with_detail(avail(14), SRC, "VMX_PROCBASED_CTLS2[14]"),
         ));
+        out.push((
+            "ept_violation_ve",
+            Detection::with_detail(avail(18), SRC, "VMX_PROCBASED_CTLS2[18]"),
+        ));
+        out.push((
+            "ept_mode_based_exec",
+            Detection::with_detail(avail(22), SRC, "VMX_PROCBASED_CTLS2[22]"),
+        ));
+        out.push((
+            "tsc_scaling",
+            Detection::with_detail(avail(25), SRC, "VMX_PROCBASED_CTLS2[25]"),
+        ));
+        out.push((
+            "usr_wait_pause",
+            Detection::with_detail(avail(26), SRC, "VMX_PROCBASED_CTLS2[26]"),
+        ));
     }
 
-    // Pin-based controls (0x481): posted interrupts = allowed-1 bit 7.
+    // Pin-based controls (0x481): allowed-1 bits are in the high dword.
     if let Ok(v) = read(msr, 0x481) {
+        let avail = |b: u32| present(bit(v, 32 + b));
+        out.push((
+            "vnmi",
+            Detection::with_detail(avail(5), SRC, "VMX_PINBASED_CTLS[5]"),
+        ));
+        out.push((
+            "preemption_timer",
+            Detection::with_detail(avail(6), SRC, "VMX_PINBASED_CTLS[6]"),
+        ));
         out.push((
             "posted_intr",
-            Detection::with_detail(present(bit(v, 32 + 7)), SRC, "VMX_PINBASED_CTLS[7]"),
+            Detection::with_detail(avail(7), SRC, "VMX_PINBASED_CTLS[7]"),
         ));
     }
 
     // EPT/VPID capabilities (0x48C).
     if let Ok(v) = read(msr, 0x48C) {
         out.push((
-            "ept_ad",
-            Detection::with_detail(present(bit(v, 21)), SRC, "VMX_EPT_VPID_CAP[21]"),
+            "ept_x_only",
+            Detection::with_detail(present(bit(v, 0)), SRC, "VMX_EPT_VPID_CAP[0]"),
         ));
         out.push((
             "ept_1gb",
             Detection::with_detail(present(bit(v, 17)), SRC, "VMX_EPT_VPID_CAP[17]"),
+        ));
+        out.push((
+            "ept_ad",
+            Detection::with_detail(present(bit(v, 21)), SRC, "VMX_EPT_VPID_CAP[21]"),
+        ));
+        out.push((
+            "invvpid",
+            Detection::with_detail(present(bit(v, 32)), SRC, "VMX_EPT_VPID_CAP[32]"),
         ));
     }
 }

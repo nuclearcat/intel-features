@@ -90,18 +90,23 @@ fn read_flags(ctx: &Context) -> Result<CpuFlags, String> {
         if !has_processor {
             continue;
         }
-        let flags = block
-            .lines()
-            .find_map(|line| {
-                let (key, value) = line.split_once(':')?;
-                (key.trim() == "flags").then(|| {
-                    value
-                        .split_whitespace()
-                        .map(str::to_string)
-                        .collect::<HashSet<_>>()
-                })
-            })
-            .ok_or_else(|| "malformed /proc/cpuinfo: processor block lacks flags".to_string())?;
+        let mut has_flags = false;
+        let mut flags = HashSet::new();
+        for line in block.lines() {
+            let Some((key, value)) = line.split_once(':') else {
+                continue;
+            };
+            let key = key.trim();
+            if key == "flags" || key == "vmx flags" {
+                if key == "flags" {
+                    has_flags = true;
+                }
+                flags.extend(value.split_whitespace().map(str::to_string));
+            }
+        }
+        if !has_flags {
+            return Err("malformed /proc/cpuinfo: processor block lacks flags".to_string());
+        }
         blocks.push(flags);
     }
     if blocks.is_empty() {

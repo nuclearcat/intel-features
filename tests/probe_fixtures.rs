@@ -207,6 +207,20 @@ fn procfs_reports_asymmetric_flags_across_all_blocks() {
 }
 
 #[test]
+fn procfs_parses_vmx_flags_line() {
+    let cpuinfo = "processor\t: 0\nflags\t\t: sse vmx\nvmx flags\t: ept_1gb unrestricted_guest shadow_vmcs tsc_scaling\n";
+    let findings = ProcfsProbe
+        .detect(&context(
+            MemoryReader::default().file("/proc/cpuinfo", cpuinfo),
+        ))
+        .unwrap();
+    assert_eq!(status(&findings, "ept_1gb"), Status::Present);
+    assert_eq!(status(&findings, "unrestricted_guest"), Status::Present);
+    assert_eq!(status(&findings, "vmcs_shadow"), Status::Present);
+    assert_eq!(status(&findings, "tsc_scaling"), Status::Present);
+}
+
+#[test]
 fn malformed_cpuinfo_is_unknown_not_absent() {
     let findings = ProcfsProbe
         .detect(&context(
